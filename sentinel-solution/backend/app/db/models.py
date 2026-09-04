@@ -1,0 +1,230 @@
+from __future__ import annotations
+
+import datetime as dt
+import json
+
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy.orm import declarative_base, relationship
+
+Base = declarative_base()
+
+
+class VehicleIdentity(Base):
+    """A vehicle's identity across cameras — the thing movement history is
+    actually built from, NOT the plate string directly.
+
+    Starts anonymous (plate=None) if ANPR fails on first sighting, carrying
+    only an appearance embedding. Gets upgraded to a real plate the moment
+    ANY sighting linked to it produces a confident plate read — at which
+    point every earlier anonymous sighting becomes part of that vehicle's
+    plate history retroactively. See identity.py for the resolution logic
+    and STRATEGY.md's "plate-first, appearance-second" principle.
+    """
+
+    __tablename__ = "vehicle_identity"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # unique (not just indexed): each camera runs on its own thread, and two
+    # cameras can finalize a sighting of the same plate within the same
+    # processing window. Without a DB-enforced constraint, a check-then-insert
+    # race can create two VehicleIdentity rows for one physical vehicle,
+    # silently splitting its cross-camera history (see identity.py's
+    # IntegrityError handling, which relies on this constraint existing).
+    # NULL stays non-unique in SQLite/Postgres, so anonymous identities
+    # (plate=None) are unaffected.
+    plate = Column(String, unique=True, index=True, nullable=True)  # null until upgraded
+    plate_confidence = Column(Float, nullable=True)
+    embedding_json = Column(String, nullable=True)  # latest appearance embedding, as JSON floats
+    first_seen_at = Column(DateTime, default=dt.datetime.utcnow)
+    last_seen_at = Column(DateTime, default=dt.datetime.utcnow)
+
+    def set_embedding(self, embedding) -> None:
+        self.embedding_json = json.dumps([round(float(x), 5) for x in embedding])
+
+    def get_embedding(self):
+        import numpy as np  # local import to avoid a hard numpy dep at module load
+
+        if not self.embedding_json:
+            return None
+        return np.array(json.loads(self.embedding_json), dtype=np.float32)
+
+
+class CameraRegistry(Base):
+    """Model 1: Centralised CCTV Registry & GIS Mapping — metadata inventory,
+    independent of whether a live stream is currently open for this camera."""
+
+    __tablename__ = "camera_registry"
+
+    id = Column(String, primary_key=True)  # matches catalogue camera id
+    department = Column(String, nullable=True)
+    location_name = Column(String, nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    vendor = Column(String, nullable=True)
+    codec = Column(String, nullable=True)
+    onboarded_at = Column(DateTime, default=dt.datetime.utcnow)
+    last_seen_live_at = Column(DateTime, nullable=True)
+    # No default: a freshly-onboarded camera hasn't been confirmed live yet,
+    # so its health is genuinely unknown — defaulting to True would claim a
+    # health status we have no evidence for. Only main.py's health-sync loop
+    # (backed by the real RTSP worker's connection state) ever sets this.
+    is_healthy = Column(Boolean, nullable=True, default=None)
+
+
+class VehicleEvent(Base):
+    """One sighting of a vehicle at a camera/time — the raw material for
+    cross-camera movement history (Model 2).
+
+    `plate` is nullable: when ANPR can't produce a confident read (bad
+    angle, glare, motion blur), the vehicle is still logged by its visual
+    attributes (colour, type, dimensions) so it isn't invisible to
+    investigators — see routes_vehicle.py's search-by-attributes fallback.
+    """
+
+    __tablename__ = "vehicle_event"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    identity_id = Column(Integer, ForeignKey("vehicle_identity.id"), nullable=False)
+    plate = Column(String, index=True, nullable=True)
+    plate_confidence = Column(Float, nullable=True)
+    camera_id = Column(String, ForeignKey("camera_registry.id"), nullable=False)
+    pts_ms = Column(Float, nullable=False)  # stream-relative PTS, not wall clock
+    observed_at = Column(DateTime, default=dt.datetime.utcnow)  # wall clock for display only
+    confidence = Column(Float, nullable=True)  # detector confidence
+
+    vehicle_type = Column(String, nullable=True)  # car / truck / bus / motorcycle
+    color = Column(String, nullable=True)
+    color_confidence = Column(Float, nullable=True)
+    width_px = Column(Integer, nullable=True)
+    height_px = Column(Integer, nullable=True)
+    aspect_ratio = Column(Float, nullable=True)
+    make_model = Column(String, nullable=True)  # usually null — see attributes.py
+    make_model_confidence = Column(Float, nullable=True)
+
+    # Motion attributes derived from the within-camera track's bbox path over
+    # PTS (see tracker.py) — the "analytics beyond ANPR" beat, inspired by
+    # BriefCam's searchable speed/dwell/direction (see
+    # ../../RESEARCH_EXISTING_SYSTEMS.md). IMPORTANT: these are IMAGE-PLANE
+    # metrics — pixels/second and screen-space direction — NOT calibrated
+    # real-world km/h or compass bearing. Without per-camera homography
+    # calibration (out of scope), they're relative indicators (is this
+    # vehicle moving fast? stopped? which way across frame?), useful for
+    # "stopped in restricted zone" / "wrong-way" style filters but not a
+    # speeding ticket. Named *_px_per_s / *_deg to keep that honest.
+    dwell_time_s = Column(Float, nullable=True)  # how long the vehicle was tracked in this camera's view
+    speed_px_per_s = Column(Float, nullable=True)  # bbox-centre displacement / elapsed PTS
+    direction_deg = Column(Float, nullable=True)  # 0=right, 90=down, 180=left, 270=up (image coords)
+
+    # How THIS sighting got attached to its identity_id — the raw material
+    # for the "why was this vehicle linked?" explainability panel. Captured
+    # at resolve-time in identity.py because the match decision (embedding
+    # similarity against whichever identity was live at that moment) can't
+    # be reconstructed later: VehicleIdentity only keeps its latest
+    # embedding, not a history of what it looked like at each past match.
+    link_method = Column(String, nullable=True)
+    # "new_identity" | "plate_continuation" | "plate_upgrade" | "appearance_match"
+    link_score = Column(Float, nullable=True)  # cosine similarity, only set for appearance_match
+    link_time_gap_s = Column(Float, nullable=True)  # seconds since the identity's previous sighting
+
+    camera = relationship("CameraRegistry")
+    identity = relationship("VehicleIdentity")
+
+
+class WatchlistEntry(Base):
+    """Stolen vehicles / blacklisted plates for cross-referencing."""
+
+    __tablename__ = "watchlist_entry"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    plate = Column(String, unique=True, index=True, nullable=False)
+    reason = Column(String, nullable=False)  # "stolen", "wanted", "blacklisted", ...
+    added_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class AuditLog(Base):
+    """Every investigative query is purpose-bound and logged — DPDP-oriented
+    governance: who queried what, for which case, and why."""
+
+    __tablename__ = "audit_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, nullable=False)
+    purpose = Column(String, nullable=False)  # e.g. "stolen_vehicle_investigation"
+    case_id = Column(String, nullable=True)
+    query = Column(String, nullable=False)  # e.g. the plate searched
+    created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class ApiKeyEntry(Base):
+    """Model 1 explicitly requires 'department-wise RBAC' as a deliverable,
+    not a bonus — this is the minimal real implementation of that: an API
+    key maps to a user + a role, and routes declare which roles they accept
+    (see api/auth.py). Not a stub: keys actually gate access below.
+
+    Keys are stored hashed (sha256) so the DB file itself doesn't hand out
+    working credentials if it leaks — matches the project's "purpose-bound
+    audited queries" governance story actually having teeth.
+    """
+
+    __tablename__ = "api_key"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key_hash = Column(String, unique=True, index=True, nullable=False)
+    user_id = Column(String, nullable=False)
+    role = Column(String, nullable=False)  # "admin" | "investigator" | "viewer"
+    department = Column(String, nullable=True)
+    created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+# Governed alert lifecycle (Palantir-Gotham-inspired entity lifecycle — see
+# ../../COMPETITIVE_TEARDOWN.md §A). An alert is a live investigation item,
+# not a fire-and-forget log line: it moves through explicit states, and only
+# these transitions are allowed (enforced in routes_alerts.py, not just
+# convention). "dismissed" is the false-positive terminal — a first-class
+# state precisely because "AI output is a lead, not evidence" (HLD §6): an
+# investigator marking a hit as a false positive is a real, auditable action,
+# not an absence of one.
+ALERT_STATUS_NEW = "new"
+ALERT_STATUS_ACKNOWLEDGED = "acknowledged"
+ALERT_STATUS_RESOLVED = "resolved"          # genuine hit, action taken
+ALERT_STATUS_DISMISSED = "dismissed"        # false positive
+ALERT_STATUSES = (
+    ALERT_STATUS_NEW,
+    ALERT_STATUS_ACKNOWLEDGED,
+    ALERT_STATUS_RESOLVED,
+    ALERT_STATUS_DISMISSED,
+)
+# from-state -> set of allowed next states. Terminal states map to empty set.
+ALERT_TRANSITIONS = {
+    ALERT_STATUS_NEW: {ALERT_STATUS_ACKNOWLEDGED, ALERT_STATUS_DISMISSED},
+    ALERT_STATUS_ACKNOWLEDGED: {ALERT_STATUS_RESOLVED, ALERT_STATUS_DISMISSED},
+    ALERT_STATUS_RESOLVED: set(),
+    ALERT_STATUS_DISMISSED: set(),
+}
+
+
+class Alert(Base):
+    """Emitted the moment a VehicleEvent's plate matches a WatchlistEntry.
+
+    Carries a governed lifecycle `status` (see ALERT_TRANSITIONS above), not
+    just a boolean — this is what makes it an investigation item an operator
+    works, and is the concrete form of the "explainable, human-in-the-loop"
+    intelligence layer (HLD §6). The legacy `acknowledged` boolean is kept in
+    sync (True once status leaves "new") so existing clients don't break."""
+
+    __tablename__ = "alert"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    plate = Column(String, index=True, nullable=False)
+    camera_id = Column(String, ForeignKey("camera_registry.id"), nullable=False)
+    reason = Column(String, nullable=False)
+    vehicle_event_id = Column(Integer, ForeignKey("vehicle_event.id"), nullable=False)
+    created_at = Column(DateTime, default=dt.datetime.utcnow)
+    acknowledged = Column(Boolean, default=False)
+    status = Column(String, default=ALERT_STATUS_NEW, nullable=False)
+    # Who moved it to its current status, and when — the accountability trail
+    # for the action, mirroring AuditLog's purpose-bound logging ethos.
+    status_updated_by = Column(String, nullable=True)
+    status_updated_at = Column(DateTime, nullable=True)
+
+    camera = relationship("CameraRegistry")

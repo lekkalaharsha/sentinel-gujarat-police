@@ -1,0 +1,31 @@
+# Secrets — never commit the sandbox access password/session cookie
+.env
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.db
+
+# ML model weights — large, auto-downloaded, don't belong in git
+*.pt
+*.onnx
+.paddleocr/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+
+# Deck-building tool venv + rendered preview PNGs — not deliverables,
+# regenerate via deck-build/build_deck.py. The .pptx itself IS a deliverable
+# and is intentionally NOT ignored.
+deck-build/.venv/
+deck-build/preview*/
+
+# Editor/OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store

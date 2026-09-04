@@ -1,0 +1,219 @@
+"""Wires a single video Frame through the full chain:
+
+    detect vehicle -> locate plate region -> enhance -> OCR
+        -> temporal fusion (tracker.py, within-camera)
+        -> Re-ID embedding -> cross-camera identity resolution (identity.py)
+        -> persist -> watchlist check
+
+Called by StreamManager for each sampled frame.
+
+Core design principle (see STRATEGY.md / the "what if we can't see the
+plate" discussion): ANPR failure must not mean tracking failure.
+
+    Plate not readable
+            v
+    Don't discard the vehicle
+            v
+    Generate a vehicle fingerprint (colour + type + appearance embedding)
+            v
+    Track it as an anonymous identity across cameras
+            v
+    Upgrade to a real plate the moment ANY sighting reads one
+
+A single OCR read is also unreliable on its own (glare/blur/angle on one
+frame), so within a camera we don't trust frame 1 — plate reads are
+majority-voted across the whole time a vehicle is in view (tracker.py)
+before ever reaching the identity resolver.
+"""
+from __future__ import annotations
+
+import datetime as dt
+import logging
+from typing import Callable, Dict
+
+from .. import config
+from ..db.models import CameraRegistry, VehicleEvent
+from ..db.session import SessionLocal
+from ..streaming.rtsp_client import Frame
+from ..watchlist.service import watchlist_service
+from .anpr import PlateReader
+from .attributes import MakeModelClassifier, StubMakeModelClassifier, extract_attributes
+from .detector import VehicleDetector
+from .identity import identity_resolver
+from .plate_detector import PlateDetector, StubPlateDetector, crop_plate, enhance_plate_crop
+from .reid import EMBEDDING_DIM, ColorHistogramEncoder, ReIdEncoder
+
+import numpy as np
+from .tracker import CameraTracker, Track
+
+logger = logging.getLogger("sentinel.pipeline")
+
+
+class AnalyticsPipeline:
+    def __init__(
+        self,
+        detector_factory: Callable[[], VehicleDetector],
+        plate_reader: PlateReader,
+        make_model_classifier: MakeModelClassifier = StubMakeModelClassifier(),
+        plate_detector: PlateDetector = StubPlateDetector(),
+        reid_encoder: ReIdEncoder = ColorHistogramEncoder(),
+    ):
+        # One detector PER CAMERA, not shared: YoloVehicleDetector's
+        # ByteTrack state (persist=True) is only meaningful for a single
+        # continuous stream — sharing one instance across concurrent cameras
+        # would let unrelated scenes' tracks associate with each other.
+        self._detector_factory = detector_factory
+        self._detectors: Dict[str, VehicleDetector] = {}
+        self._plate_reader = plate_reader
+        self._make_model_classifier = make_model_classifier
+        self._plate_detector = plate_detector
+        self._reid_encoder = reid_encoder
+        self._trackers: Dict[str, CameraTracker] = {}
+
+    def process(self, frame: Frame) -> None:
+        tracker = self._trackers.setdefault(frame.camera_id, CameraTracker())
+
+        if frame.discontinuity:
+            # Scene cut at the sandbox's recording loop point — a track
+            # can't sensibly continue across a hard cut, so finalize
+            # whatever was in flight now rather than let it time out.
+            # The detector's own ByteTrack state is equally stale across a
+            # hard cut (its Kalman-predicted motion assumes continuous
+            # footage), so drop it too — a fresh instance is built lazily
+            # below, giving ByteTrack a clean slate exactly like the
+            # within-camera tracker gets.
+            logger.info("camera %s: scene discontinuity at pts=%.0fms", frame.camera_id, frame.pts_ms)
+            self._finalize_tracks(frame.camera_id, tracker.flush_all())
+            self._detectors.pop(frame.camera_id, None)
+
+        # NOT `self._detectors.setdefault(id, self._detector_factory())` —
+        # setdefault evaluates its second argument eagerly on every call
+        # (Python evaluates arguments before the call), so that form would
+        # construct a full YOLO model on every single frame just to discard
+        # it whenever the camera already had one. Real bug, caught by
+        # actually running this (see verification), not by inspection.
+        if frame.camera_id not in self._detectors:
+            self._detectors[frame.camera_id] = self._detector_factory()
+        detector = self._detectors[frame.camera_id]
+        detections = detector.detect(frame.image)
+        vehicle_detections = [d for d in detections if d.label != "person"]
+
+        for det in vehicle_detections:
+            x1, y1, x2, y2 = (int(v) for v in det.bbox)
+            crop = frame.image[max(y1, 0):max(y2, 0), max(x1, 0):max(x2, 0)]
+            if crop.size == 0:
+                continue
+
+            attrs = extract_attributes(crop, det.label, self._make_model_classifier)
+            plate_result = self._read_plate(crop)
+
+            tracker.update(
+                bbox=det.bbox,
+                pts_ms=frame.pts_ms,
+                vehicle_type=det.label,
+                detection_confidence=det.confidence,
+                attrs=attrs,
+                plate_result=plate_result,
+                crop=crop,
+                external_track_id=det.track_id,
+            )
+
+        self._finalize_tracks(frame.camera_id, tracker.pop_expired(frame.pts_ms))
+
+    def _read_plate(self, vehicle_crop):
+        """vehicle crop -> locate plate region -> enhance -> OCR. Running
+        OCR on the whole vehicle crop (bumper/badges/background) produces
+        far more false positives than localizing the plate region first."""
+        plate_bbox = self._plate_detector.locate(vehicle_crop)
+        if plate_bbox is None:
+            return None
+        plate_crop = crop_plate(vehicle_crop, plate_bbox)
+        if plate_crop.size == 0:
+            return None
+        enhanced = enhance_plate_crop(plate_crop)
+        return self._plate_reader.read(enhanced)
+
+    def _finalize_tracks(self, camera_id: str, tracks: list[Track]) -> None:
+        if not tracks:
+            return
+
+        session = SessionLocal()
+        try:
+            self._ensure_camera_registered(session, camera_id)
+
+            for track in tracks:
+                plate, plate_confidence = track.consensus_plate()
+
+                # Low-confidence read suppression (Flock-inspired, see
+                # RESEARCH_EXISTING_SYSTEMS.md): a plate whose fused
+                # confidence is below threshold is treated as UNREAD for
+                # identity purposes — better to log the vehicle anonymously
+                # (by appearance/attributes) than to spawn a false plate
+                # identity or, worse, a false watchlist alert from a
+                # misread. The vehicle is never dropped; only the shaky
+                # plate string is withheld. Verified this path: the sighting
+                # still persists and still resolves an identity by appearance.
+                if plate is not None and (plate_confidence or 0.0) < config.PLATE_MIN_CONFIDENCE:
+                    logger.info(
+                        "camera %s: suppressing low-confidence plate read %s (%.2f < %.2f)",
+                        camera_id, plate, plate_confidence or 0.0, config.PLATE_MIN_CONFIDENCE,
+                    )
+                    plate, plate_confidence = None, None
+
+                attrs = track.best_attrs
+                dwell_time_s, speed_px_per_s, direction_deg = track.motion_attributes()
+                embedding = (
+                    self._reid_encoder.encode(track.best_crop)
+                    if track.best_crop is not None
+                    else np.zeros(EMBEDDING_DIM, dtype=np.float32)
+                )
+
+                identity, link_info = identity_resolver.resolve(
+                    session,
+                    plate=plate,
+                    plate_confidence=plate_confidence,
+                    embedding=embedding,
+                    observed_at=dt.datetime.utcnow(),
+                )
+
+                event = VehicleEvent(
+                    identity_id=identity.id,
+                    link_method=link_info.method,
+                    link_score=link_info.score,
+                    link_time_gap_s=link_info.time_gap_s,
+                    # `plate`/`plate_confidence` are this sighting's OWN read
+                    # only — null if this camera couldn't read it, even if
+                    # the identity is otherwise resolved via another camera.
+                    # That's what makes "was the plate actually read here"
+                    # answerable per-event; query by identity_id (not by
+                    # this field) to get the full cross-camera history.
+                    plate=plate,
+                    plate_confidence=plate_confidence,
+                    camera_id=camera_id,
+                    pts_ms=track.last_pts_ms,
+                    confidence=max(track.detection_confidences) if track.detection_confidences else None,
+                    vehicle_type=attrs.vehicle_type if attrs else track.vehicle_type,
+                    color=attrs.color if attrs else None,
+                    color_confidence=attrs.color_confidence if attrs else None,
+                    width_px=attrs.width_px if attrs else None,
+                    height_px=attrs.height_px if attrs else None,
+                    aspect_ratio=attrs.aspect_ratio if attrs else None,
+                    make_model=attrs.make_model if attrs else None,
+                    make_model_confidence=attrs.make_model_confidence if attrs else None,
+                    dwell_time_s=dwell_time_s,
+                    speed_px_per_s=speed_px_per_s,
+                    direction_deg=direction_deg,
+                )
+                session.add(event)
+                session.commit()
+
+                if identity.plate:
+                    watchlist_service.raise_alert_if_matched(session, identity.plate, camera_id, event.id)
+        finally:
+            session.close()
+
+    @staticmethod
+    def _ensure_camera_registered(session, camera_id: str) -> None:
+        if session.get(CameraRegistry, camera_id) is None:
+            session.add(CameraRegistry(id=camera_id))
+            session.commit()

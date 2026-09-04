@@ -1,0 +1,28 @@
+# Real detection/ANPR deps, kept separate from requirements.txt so the base
+# service (registry, alerts, watchlist, API) installs fast and runs without
+# a GPU/large downloads. Install these in the SAME venv as requirements.txt:
+#
+#   python -m venv .venv && .venv/Scripts/activate
+#   pip install -r requirements.txt -r requirements-ml.txt
+#
+# Versions are pinned deliberately, not just "latest": paddleocr>=3.0 changed
+# its public API (dropped `show_log=`, changed the .ocr() result shape) in a
+# way that breaks analytics/anpr.py's PaddleOcrPlateReader — verified by
+# actually installing 3.7.0 and hitting the incompatibility at runtime, not
+# assumed. 2.9.1 is the version anpr.py's parsing logic was written against
+# and verified against (see analytics/anpr.py's docstring / STRATEGY.md).
+ultralytics==8.4.138     # YoloVehicleDetector (analytics/detector.py) — pretrained COCO weights (yolov8n.pt) work out of the box for car/truck/bus/motorcycle/person
+lap==0.5.13              # required by ultralytics' built-in ByteTrack (model.track(...)) — pinned explicitly; ultralytics silently auto-installs this at runtime if missing, which is not something to rely on in a production/offline deployment
+paddleocr==2.9.1         # PaddleOcrPlateReader (analytics/anpr.py) — pin matters, see above
+paddlepaddle==2.6.2      # PaddleOCR's inference backend
+
+# WINDOWS DLL ORDERING GOTCHA (verified empirically, not theoretical):
+# importing paddleocr/paddlepaddle BEFORE torch in the same process corrupts
+# torch's native DLL loading (`OSError: ... torch\lib\shm.dll ...`). Both
+# ship their own OpenMP/MKL-family DLLs and the wrong one wins on Windows if
+# paddle loads first. Always construct the YOLO detector (which imports
+# torch) before the PaddleOCR reader — see main.py's `_detector`/
+# `_plate_reader` module-level ordering and its comment. Only verified on
+# Windows so far (this dev environment); not tested on Linux — if the
+# production/demo box is Linux, re-verify whether this ordering constraint
+# still applies before assuming it does or doesn't.
