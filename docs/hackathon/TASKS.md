@@ -136,13 +136,32 @@ issues") before trusting this file if it's more than a day or two old.
       same-vehicle real-footage pairs; the extended deadline may make this
       newly worth attempting (e.g. a controlled test driving one vehicle
       past 2+ real sandbox cameras) rather than deferring further.
-- [ ] **New 2026-09-05:** per-character (or position-weighted) consensus
-      voting in `tracker.py`'s `consensus_plate()` — currently exact-string
-      majority vote, which splits `cam06`'s real 8-valid-reads-out-of-13
-      across ~6 distinct near-matching strings (below the 0.5 confidence
-      floor). A character-level vote per position would likely recover a
-      single confident read from the same real data. See `HLD.md` §3 for
-      the full context.
+- [x] **Per-character consensus voting in `tracker.py`'s
+      `consensus_plate()` — done 2026-09-10.** Replaced exact-string
+      majority vote with position-weighted character voting: `Track` now
+      keeps raw `plate_reads` (not pre-bucketed by exact string), reads
+      are grouped by length (position voting is only meaningful within
+      same length — a different-length read is either a different plate
+      or a dropped/added-character OCR miss, no edit-distance alignment
+      attempted, per this item's documented scope), the length-group with
+      the most total confidence wins, and the final plate/confidence come
+      from a per-position confidence-weighted vote (ties broken by
+      first-seen character, matching the old algorithm's tie-break).
+      Confidence is the weakest position's vote share, which — proven by
+      hand-deriving all 4 existing test cases before touching code —
+      reproduces the OLD algorithm's numbers exactly whenever all reads
+      share one length (all 4 pre-existing `test_consensus_plate_*` tests,
+      including the real cam06 regression test, pass unchanged with
+      identical confidence values). Two new tests added:
+      `test_consensus_plate_position_voting_recovers_read_exact_string_voting_would_fail`
+      (the actual documented gap: 5 reads with 5 DIFFERENT single-char
+      misreads at 5 different positions — old algorithm sees 5 equal-vote
+      candidates at 0.2 confidence each, rejected below
+      `PLATE_MIN_CONFIDENCE`; new algorithm recovers the correct plate at
+      0.8, clearing the gate) and
+      `test_consensus_plate_different_length_reads_grouped_separately`
+      (a dropped-character read doesn't get position-voted against
+      correct-length reads). Full suite 55/55 passed.
 
 ## P2 — known code issues, not yet fixed (lower demo-visibility risk)
 

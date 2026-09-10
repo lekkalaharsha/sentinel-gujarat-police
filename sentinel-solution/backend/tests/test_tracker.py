@@ -125,6 +125,44 @@ def test_consensus_plate_confidence_is_vote_share_not_count():
     assert conf == pytest.approx(0.5)
 
 
+def test_consensus_plate_position_voting_recovers_read_exact_string_voting_would_fail():
+    """The real gap this position-weighted rewrite fixes (TASKS.md,
+    2026-09-05): 5 reads, each with a DIFFERENT single-character misread at
+    a DIFFERENT position, so all 5 raw strings are distinct. The OLD
+    exact-string algorithm would see 5 candidates with equal vote share
+    (0.85/4.25 = 0.2 each) — below PLATE_MIN_CONFIDENCE=0.5, a rejected
+    read despite every position having 4-out-of-5 real agreement. Per-
+    character voting recovers the correct plate at 0.8 confidence, clearing
+    the gate, because each position's majority survives independently of
+    which OTHER position that same read got wrong."""
+    true_plate = "GJ01RP6128"
+    reads = []
+    for wrong_pos in range(5):
+        chars = list(true_plate)
+        chars[wrong_pos] = "X"
+        reads.append(("".join(chars), 0.85))
+    track = _single_track_with_reads(reads)
+    plate, conf = track.consensus_plate()
+    assert plate == true_plate
+    assert conf == pytest.approx(0.8)
+    from app import config
+    assert conf >= config.PLATE_MIN_CONFIDENCE
+
+
+def test_consensus_plate_different_length_reads_grouped_separately():
+    """A dropped/added-character OCR read (different length) must not be
+    position-voted against the correct-length reads — it forms its own
+    group, and the group with more total confidence wins."""
+    track = _single_track_with_reads([
+        ("GJ01AB1234", 0.9),
+        ("GJ01AB1234", 0.85),
+        ("GJ1AB1234", 0.95),  # one character short — a different group
+    ])
+    plate, conf = track.consensus_plate()
+    assert plate == "GJ01AB1234"
+    assert conf == pytest.approx(1.0)  # unanimous within its own (winning) group
+
+
 # --- ByteTrack id handoff ---------------------------------------------------
 
 def test_bytetrack_id_handoff_claims_frame1_iou_track():
