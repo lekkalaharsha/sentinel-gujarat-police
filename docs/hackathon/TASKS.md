@@ -131,11 +131,35 @@ issues") before trusting this file if it's more than a day or two old.
          explicitly for VAHAN/SARTHI/eGujCop/CCTNS.
       `MODULE_GAP_ANALYSIS.md`'s discussion points section updated to
       mark all 3 resolved. Docs-only change, no code touched.
-- [ ] `CODEX_HANDOFF_PROMPT.md`'s ML-3: empirically justify
-      `EMBEDDING_SIMILARITY_THRESHOLD=0.80` — still blocked on lacking
-      same-vehicle real-footage pairs; the extended deadline may make this
-      newly worth attempting (e.g. a controlled test driving one vehicle
-      past 2+ real sandbox cameras) rather than deferring further.
+- [x] **`CODEX_HANDOFF_PROMPT.md`'s ML-3 — run for real 2026-09-10, real
+      findings, threshold intentionally NOT changed.** New
+      `scripts/calibrate_embedding_threshold.py` run against the actual
+      accumulated `sentinel.db` (11,832 real crops). **Positive side
+      (recall): still genuinely blocked** — only 6 events have both a
+      crop and plate, 0 plates repeat across cameras, only 4 identity
+      links were ever plate-verified (not appearance-circular) — a
+      concrete number confirming the same conclusion this item already
+      had, not a new gap. **Negative side (false-positive rate): a real,
+      concerning finding** — 41.87% of 3,000 confirmed-different-vehicle
+      real crop pairs scored ≥ the current 0.80 threshold (median
+      negative-pair score 0.776, right at the threshold) —
+      `ColorHistogramEncoder` is a weak discriminator on this dataset.
+      **Deliberately did not raise the threshold**: doing so on
+      negative-only evidence with zero positive/recall data risks
+      silently breaking the system's actual documented differentiator
+      (cross-camera identity continuity without a plate read) — a
+      measured false-positive fix traded for an unmeasurable
+      false-negative regression isn't a net improvement (confirmed via
+      `advisor` before deciding). Cross-checked against the same day's
+      Model 1 gap-analysis work: the demo-lead camera (`cam06`) HAS GPS
+      set, so `identity.py`'s geo-feasibility gate is active and
+      compensating for the weak embedding on the actual headline demo
+      case; residual exposure is the ~8/30 cameras with no GPS at all,
+      where the weak embedding is the only gate. Full writeup + numbers
+      in `CODEX_HANDOFF_PROMPT.md`'s ML-3 section; `identity.py`'s
+      `EMBEDDING_SIMILARITY_THRESHOLD` comment updated to cite this,
+      not a guess. Full backend suite 55/55 passed (comment/script-only
+      change, no runtime behavior changed).
 - [x] **Per-character consensus voting in `tracker.py`'s
       `consensus_plate()` — done 2026-09-10.** Replaced exact-string
       majority vote with position-weighted character voting: `Track` now
