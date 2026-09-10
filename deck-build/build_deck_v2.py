@@ -702,6 +702,6 @@ bullets(s, Inches(0.97), Inches(4.3), Inches(10.5), Inches(1.3), [
 ], size=13.5, color=RGBColor(0xB9, 0xC6, 0xDA), space_after=8, bullet_color=AMBER, font=F_BODY_L)
 txt(s, Inches(0.97), Inches(6.02), Inches(8), Inches(0.4), "SENTINEL // Gujarat Police Innovation Challenge 2026", size=11.5, color=MUTED_LT, font=F_BODY)
 
-out_path = r"C:\Users\harsh\Music\Gujarat Police Hackathon Innovation Challenge 2026\Sentinel_Solution_Presentation.pptx"
+out_path = r"C:\Users\harsh\Music\Gujarat Police Hackathon Innovation Challenge 2026\docs\assets\Sentinel_Solution_Presentation.pptx"
 prs.save(out_path)
 print(f"Saved {PAGE_NO[0]} slides to {out_path}")

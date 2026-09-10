@@ -1,9 +1,10 @@
 # Sentinel — Gujarat Police Innovation Challenge 2026
 
-Read `HACKATHON_DETAILS.md` and `STRATEGY.md` in this directory before
-doing anything else in a new session — they are the source of truth for
-the challenge rules and our architecture decisions. Do not re-derive
-either from memory; re-read the files, they may have been updated.
+Read `docs/hackathon/HACKATHON_DETAILS.md` and `docs/strategy/STRATEGY.md`
+before doing anything else in a new session — they are the source of
+truth for the challenge rules and our architecture decisions. Do not
+re-derive either from memory; re-read the files, they may have been
+updated.
 
 This is the single instructions file for this repo — for any AI coding
 agent, not just Claude Code. If your tool only reads `AGENTS.md`, that
@@ -25,20 +26,30 @@ Treat remaining time as scarce — see "Scope discipline" below.
 
 ## Directory map
 
-- `HACKATHON_DETAILS.md` — full rules, prize structure, evaluation
-  criteria, submission requirements, and the sandbox integration spec
-  (real endpoints: `cctv.corp8.cloud` for HLS/catalogue,
+- `docs/hackathon/HACKATHON_DETAILS.md` — full rules, prize structure,
+  evaluation criteria, submission requirements, and the sandbox
+  integration spec (real endpoints: `cctv.corp8.cloud` for HLS/catalogue,
   `103.250.160.189` for RTSP/WHEP — §13a is authoritative over generic
   `<host>` examples elsewhere in the file).
-- `STRATEGY.md` — the architecture decision record, synthesized from two
-  independent research passes (ChatGPT + DeepSeek). Read this before
-  proposing any architecture change. Do not silently deviate from its
-  IN/OUT lists without flagging the change to the user first.
-- `RESEARCH_PROMPT.md` — the prompt used to get that research; reusable if
-  more research is needed later.
+- `docs/hackathon/` — also holds `REQUIREMENTS_COVERAGE.md` (deliverable
+  -status matrix) and `TASKS.md` (living task list).
+- `docs/strategy/STRATEGY.md` — the architecture decision record,
+  synthesized from two independent research passes (ChatGPT + DeepSeek).
+  Read this before proposing any architecture change. Do not silently
+  deviate from its IN/OUT lists without flagging the change to the user
+  first.
+- `docs/strategy/` — also holds `RESEARCH_PROMPT.md` (reusable prompt for
+  further research), `RESEARCH_EXISTING_SYSTEMS.md`, and
+  `COMPETITIVE_TEARDOWN.md`.
+- `docs/submission/` — organizer-facing material: `ORGANIZER_BRIEFING.md`,
+  `EMAIL_DRAFT.md`, `DEMO_SCRIPT_OWN_FEED.md`.
+- `docs/assets/` — the presentation deck (`.pptx`/`.pdf`), screenshots,
+  and other submission images. `docs/assets/archive/` holds superseded
+  versions kept for history, not current deliverables.
 - `sentinel-solution/` — the actual backend (FastAPI) and frontend
   (React/Vite). See its own `README.md` for the module map and what's
-  stubbed vs. real.
+  stubbed vs. real, and `sentinel-solution/docs/` for the Technical
+  Proposal (`HLD.md`), `SCALABILITY.md`, and the code-review trackers.
 
 ## Scope discipline (the main risk to manage)
 
@@ -93,8 +104,9 @@ just a tooling nit.
   with a flat, **non-versioned** prefix — `/cameras`, `/vehicle`, `/live`,
   `/admin`, `/auth`, `/alerts`, `/watchlist`, not `/api/v1/...` — match
   this, don't introduce API versioning unilaterally).
-- Read `sentinel-solution/README.md`, `HLD.md`, and `STRATEGY.md` before
-  making significant changes — there is no separate `CONTRIBUTING.md`.
+- Read `sentinel-solution/README.md`, `sentinel-solution/docs/HLD.md`, and
+  `docs/strategy/STRATEGY.md` before making significant changes — there is
+  no separate `CONTRIBUTING.md`.
 
 ## Build and test commands
 
@@ -160,7 +172,7 @@ be run, report that clearly.
   persistent log; follow that precedent for any future one-shot secret
   reveal, and never paste a minted key into a committed file.
 - **Timing rules for anything touching the camera grid** (see
-  `HACKATHON_DETAILS.md` §13a): force RTSP over TCP, derive all timing from
+  `docs/hackathon/HACKATHON_DETAILS.md` §13a): force RTSP over TCP, derive all timing from
   PTS never `CAP_PROP_FPS`/wall-clock, reconnect with backoff not a tight
   loop, treat scene-loop discontinuities as expected and reset dependent
   state, never assume a uniform frame rate or camera grid.
@@ -229,14 +241,16 @@ Before declaring a task complete:
       `api.js` callers, in particular — treat existing response field
       names as a contract; don't silently rename one).
 - [ ] Documentation was updated when setup, configuration, API, or
-      behavior changed (`README.md`, `HLD.md`, `TASKS.md` as relevant).
+      behavior changed (`sentinel-solution/README.md`,
+      `sentinel-solution/docs/HLD.md`, `docs/hackathon/TASKS.md` as
+      relevant).
 - [ ] The complete diff was self-reviewed.
 
 When finishing, briefly report what changed, tests actually run,
 API/database/config changes, integration impact, and anything still
 requiring human review — matching the honesty-over-completeness bar this
-project holds itself to throughout `REVIEW_FINDINGS.md` and
-`MODULE_GAP_ANALYSIS.md`.
+project holds itself to throughout `sentinel-solution/docs/REVIEW_FINDINGS.md`
+and `sentinel-solution/docs/MODULE_GAP_ANALYSIS.md`.
 
 ## Skills / agents / MCP usage for this project
 

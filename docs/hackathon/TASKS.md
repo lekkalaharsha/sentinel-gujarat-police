@@ -44,8 +44,8 @@ issues") before trusting this file if it's more than a day or two old.
       independently blocking this — a CDN User-Agent gate — is fixed on
       our side regardless, so we're ready the moment their sandbox is.)
 - [x] Solution Presentation (PPT) — v2 done 2026-09-04.
-- [x] Technical Proposal / HLD — `sentinel-solution/HLD.md`
-- [x] Scalability Strategy — `sentinel-solution/SCALABILITY.md`
+- [x] Technical Proposal / HLD — `sentinel-solution/docs/HLD.md`
+- [x] Scalability Strategy — `sentinel-solution/docs/SCALABILITY.md`
 - [x] Real-footage ANPR accuracy measurement — done 2026-09-05, corrected
       twice same day, now conclusively positive: initial scan found 0
       reads with only wide-overview cameras inspected; reviewing all 30

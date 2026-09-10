@@ -1,0 +1,125 @@
+<mxfile host="app.diagrams.net" modified="2026-09-10T00:00:00.000Z" agent="Sentinel" version="24.7.0" type="device">
+  <diagram name="Vehicle Event Workflow" id="sentinel-workflow">
+    <mxGraphModel dx="1400" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1275" pageHeight="1650" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="Sentinel — End-to-End Vehicle Event Workflow" style="text;html=1;fontSize=22;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="10" width="900" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Step 1 -->
+        <mxCell id="s1" value="1. Camera captures frame&#10;RTSP over TCP, timing derived from PTS&#10;(never CAP_PROP_FPS / wall-clock)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="60" y="60" width="360" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Step 2 -->
+        <mxCell id="s2" value="2. Frame-stride sampling&#10;every Nth frame per camera (bounded CPU/GPU load)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="60" y="150" width="360" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Step 3 -->
+        <mxCell id="s3" value="3. YOLOv8 vehicle detection&#10;+ ByteTrack within-camera tracking" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="60" y="240" width="360" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Step 4a / 4b branch -->
+        <mxCell id="s4a" value="4a. Plate localizer crops plate region&#10;→ PaddleOCR read (+ homoglyph correction)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="60" y="330" width="360" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s4b" value="4b. Attribute extraction&#10;HSV color + vehicle type (always runs, in parallel)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="470" y="330" width="360" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Step 5 -->
+        <mxCell id="s5" value="5. consensus_plate() vote-share fusion&#10;across the track's frames" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="60" y="420" width="360" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Decision -->
+        <mxCell id="dec1" value="confidence ≥ 0.5?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="120" y="510" width="240" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="s6a" value="6a. Plate ACCEPTED&#10;withheld otherwise — vehicle still tracked&#10;anonymously by appearance (never dropped)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="60" y="620" width="360" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s6b" value="6b. Plate UNREAD&#10;tracked anonymously by color/type/track" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="470" y="620" width="360" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Step 7: identity resolution -->
+        <mxCell id="s7" value="7. Identity Resolution&#10;plate match → direct link (no gate).&#10;No plate → appearance similarity ≥0.80&#10;+ geo-feasibility gate, 60-min window" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="60" y="720" width="360" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="s7b" value="7b. Later plate read on the same vehicle&#10;retroactively upgrades the whole anonymous&#10;chain to a named identity" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="470" y="720" width="360" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Step 8: parallel checks -->
+        <mxCell id="s8a" value="8a. Anomaly check&#10;wrong-way angle / stopped-in-restricted-zone dwell" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="60" y="840" width="360" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s8b" value="8b. Watchlist check&#10;plate vs. in-memory WatchlistEntry cache" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="470" y="840" width="360" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Step 9: alert -->
+        <mxCell id="dec2" value="anomaly OR&#10;watchlist match?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="180" y="930" width="240" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="s9" value="9. Raise Alert (deduped — no repeat spam&#10;for one lingering vehicle)&#10;lifecycle: new" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1040" width="360" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="s9no" value="No alert — event stored,&#10;visible via search/timeline only" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="470" y="1040" width="360" height="65" as="geometry" />
+        </mxCell>
+
+        <!-- Step 10 -->
+        <mxCell id="s10" value="10. Investigator acknowledges/resolves alert&#10;(Topbar/Alerts view) → new → acknowledged →&#10;resolved/dismissed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe2f3;strokeColor=#3d85c6;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1140" width="360" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Step 11 -->
+        <mxCell id="s11" value="11. Investigator plate/attribute search&#10;purpose + case_id required (min 8 chars)&#10;→ logged to AuditLog, scoped to own user&#10;unless admin" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe2f3;strokeColor=#3d85c6;" vertex="1" parent="1">
+          <mxGeometry x="470" y="1140" width="360" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Step 12 -->
+        <mxCell id="s12" value="12. Frontend renders result&#10;Vehicle Timeline: OBSERVED (plate-confirmed) vs.&#10;INFERRED (appearance-linked) segments,&#10;each with link_method + link_score (explainability)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe2f3;strokeColor=#3d85c6;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1260" width="770" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Retention footer -->
+        <mxCell id="s13" value="Background: retention sweep purges events/identities/alerts older than 30 days (audit logs kept 365 days) — DPDP storage-limitation compliance, runs independently of the request path above." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;dashed=1;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1370" width="770" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ============ EDGES ============ -->
+        <mxCell id="w1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="s1" target="s2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="s2" target="s3"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="s3" target="s4a"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="s3" target="s4b"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="s4a" target="s5"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="s5" target="dec1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w7" value="yes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="dec1" target="s6a"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w8" value="no" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="dec1" target="s6b"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="s4b" target="s6b"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="s6a" target="s7"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="s6b" target="s7"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;" edge="1" parent="1" source="s7" target="s7b"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="s7" target="s8a"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="s7" target="s8b"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w15" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="s8a" target="dec2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="s8b" target="dec2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w17" value="yes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="dec2" target="s9"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w18" value="no" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="dec2" target="s9no"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w19" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="s9" target="s10"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="s9no" target="s11"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w21" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="s10" target="s12"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="w22" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="s11" target="s12"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -10,7 +10,7 @@ concerns not already documented there.
 Regression suite for the three riskiest analytics modules
 (`analytics/identity.py`, `analytics/tracker.py`, `analytics/geo.py`) —
 the SWE-4 gap; each has had a real bug caught only by manual testing. See
-`tests/` and `../REVIEW_FINDINGS.md`.
+`tests/` and `../docs/REVIEW_FINDINGS.md`.
 
 The suite is fully self-contained: in-memory SQLite DB, no camera/sandbox
 access, no ML dependencies (ultralytics/paddleocr). Run from this

@@ -42,7 +42,7 @@ replace. See `STRATEGY.md` §"The pitch correction" for the full framing.
 **What is and isn't claimed as the invention (honest differentiation).**
 Detection, ANPR, and cross-camera vehicle tracking are already shipped
 commercially in India — by Staqu (JARVIS), Videonetics, Vehant, and Innefu,
-among others (see `../RESEARCH_EXISTING_SYSTEMS.md` §7). This submission does
+among others (see `../../docs/strategy/RESEARCH_EXISTING_SYSTEMS.md` §7). This submission does
 **not** claim to have invented those, and would lose credibility with a
 jury that knows these vendors if it did. Sentinel's specific contribution is
 the **open, explainable vehicle-identity-resolution layer**: a persistent
@@ -132,7 +132,7 @@ strategy (edge inference, selective video egress).
 - **ONVIF as the device-abstraction standard:** the vendor-neutral
   integration surface targets ONVIF Profile S/T (the standard both Genetec
   Security Center and Milestone XProtect — 10,000+ device models — build
-  their multi-vendor support on; see `../RESEARCH_EXISTING_SYSTEMS.md` §2).
+  their multi-vendor support on; see `../../docs/strategy/RESEARCH_EXISTING_SYSTEMS.md` §2).
   The sandbox exposes plain RTSP, so the pilot connects directly; ONVIF is
   the documented onboarding path for real heterogeneous department cameras.
 
@@ -368,8 +368,8 @@ frame → vehicle detection → plate region → enhancement → OCR
 | Appearance Re-ID | HSV colour histogram + grayscale template, cosine similarity | **Real, working**, not state-of-the-art (FastReID/OSNet is the documented upgrade path) |
 | Cross-camera identity | Plate-first, appearance-second resolver | **Real, verified end-to-end**: an anonymous (unreadable-plate) sighting at camera A correctly upgrades to a plate identity retroactively the moment ANY camera reads it |
 | Make/model classification | Not implemented | Honest gap — no open-source model classifies Indian-market vehicle make/model well; returns `None` rather than a fabricated guess |
-| Motion attributes (dwell / speed / direction) | Derived from track bbox path over PTS | **Real, verified** — image-plane metrics (px/s, screen-direction), NOT calibrated km/h; enables dwell/wrong-way/stopped-zone filters. Inspired by BriefCam's searchable attributes (`../RESEARCH_EXISTING_SYSTEMS.md` §3) |
-| Low-confidence read suppression | Config threshold on fused plate confidence | **Real, verified** — a shaky read is withheld (vehicle still logged anonymously) rather than spawning a false identity/alert. Inspired by Flock (`../RESEARCH_EXISTING_SYSTEMS.md` §1) |
+| Motion attributes (dwell / speed / direction) | Derived from track bbox path over PTS | **Real, verified** — image-plane metrics (px/s, screen-direction), NOT calibrated km/h; enables dwell/wrong-way/stopped-zone filters. Inspired by BriefCam's searchable attributes (`../../docs/strategy/RESEARCH_EXISTING_SYSTEMS.md` §3) |
+| Low-confidence read suppression | Config threshold on fused plate confidence | **Real, verified** — a shaky read is withheld (vehicle still logged anonymously) rather than spawning a false identity/alert. Inspired by Flock (`../../docs/strategy/RESEARCH_EXISTING_SYSTEMS.md` §1) |
 | Geo-temporal route reconstruction | Haversine distance between camera GPS + time-gap → plausibility check; OBSERVED sightings interleaved with honestly-labelled INFERRED camera-less segments (`analytics/geo.py`) | **Real, verified** — the differentiator layer for the "advanced cross-camera correlation" bonus (§10 of the problem statement). Straight-line/lower-bound only; a *high* implied speed flags "not a direct drive" (unmonitored detour / possibly different vehicle). Full road-network (OSM) routing + forward next-camera prediction are documented roadmap, not built — see below |
 
 **"ANPR failure ≠ tracking failure"** is the core design principle (see
@@ -418,7 +418,7 @@ Every persisted `VehicleEvent` with a resolved plate is checked against
 polled by the frontend's Alerts panel every 5 seconds.
 
 **Governed alert lifecycle (entity-lifecycle pattern, Palantir-inspired —
-see `../COMPETITIVE_TEARDOWN.md`).** An alert is not a fire-and-forget log
+see `../../docs/strategy/COMPETITIVE_TEARDOWN.md`).** An alert is not a fire-and-forget log
 line; it's a live investigation item with an enforced state machine:
 `new → acknowledged → resolved`, with `dismissed` (false positive)
 reachable from `new`/`acknowledged`. Only transitions declared in
@@ -441,7 +441,7 @@ cross-reference; the production integration targets are Gujarat's own law-
 enforcement databases named in HACKATHON_DETAILS.md §8 — **VAHAN** (vehicle
 registration), **SARTHI** (licensing), **eGujCop** and **CCTNS** (Crime &
 Criminal Tracking Network & Systems, the national criminal DB that Indian
-ICCCs already integrate with — see `../RESEARCH_EXISTING_SYSTEMS.md` §5).
+ICCCs already integrate with — see `../../docs/strategy/RESEARCH_EXISTING_SYSTEMS.md` §5).
 The design principle is **query, don't copy**: Sentinel queries these
 systems for a match on demand rather than replicating their data, keeping
 it an interoperability layer rather than a shadow database.
@@ -532,7 +532,7 @@ Windows, not yet on the likely-Linux production/demo box.
   longer** (default 365 days) so the accountability trail outlives the
   personal data it describes. Modelled on the UK National ANPR system's
   enforced 12-month schedule — and on the *criticism* that system drew for
-  lacking enforced oversight (see `../RESEARCH_EXISTING_SYSTEMS.md` §6):
+  lacking enforced oversight (see `../../docs/strategy/RESEARCH_EXISTING_SYSTEMS.md` §6):
   we enforce retention in code, not policy-on-paper. Admins can view the
   policy (`GET /admin/retention-policy`) and trigger a purge on demand
   (`POST /admin/purge`) so the control is demonstrable, not just claimed.

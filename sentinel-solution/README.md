@@ -5,8 +5,8 @@ Implements **Model 1 (Centralised CCTV Registry & GIS Foundation, mandatory)**
 paired with **Model 2 (Unified Viewing & Metadata Analytics)** — direct
 RTSP/catalogue integration, no middleware layer, per the problem statement.
 
-Full challenge details: `../HACKATHON_DETAILS.md`. Submission documents:
-`../HLD.md` (Technical Proposal) and `../SCALABILITY.md` (Plan for Scale).
+Full challenge details: `../docs/hackathon/HACKATHON_DETAILS.md`. Submission documents:
+`docs/HLD.md` (Technical Proposal) and `docs/SCALABILITY.md` (Plan for Scale).
 
 ## Architecture
 
@@ -60,7 +60,7 @@ backend/app/
 
 ## Why it's built this way
 
-Every rule in the sandbox integration guide (`../HACKATHON_DETAILS.md` §13)
+Every rule in the sandbox integration guide (`../docs/hackathon/HACKATHON_DETAILS.md` §13)
 is encoded directly in `streaming/rtsp_client.py`:
 
 - RTSP is forced over TCP (`OPENCV_FFMPEG_CAPTURE_OPTIONS=rtsp_transport;tcp`).
@@ -282,7 +282,7 @@ between torch and paddlepaddle, not theoretical).
   with a **governed alert lifecycle** (`new → acknowledged → resolved`, plus
   `dismissed` for false positives): the UI only offers server-sanctioned
   transitions, colour-codes by state, and shows who last acted on each alert.
-  See `../HLD.md` §6 and `../COMPETITIVE_TEARDOWN.md` §A for why (entity-
+  See `docs/HLD.md` §6 and `../docs/strategy/COMPETITIVE_TEARDOWN.md` §A for why (entity-
   lifecycle pattern; false-positive dismissal as a first-class auditable
   action).
 - **Registry Ops tab** — manual camera onboarding form (Model 1's
@@ -382,8 +382,8 @@ requires), both fixed. See `HACKATHON_DETAILS.md` §13a and
 ## Not yet built (deliverables still required for submission)
 
 This section previously said the PPT and demo videos hadn't been started
-at all — stale as of 2026-09-05; see `../TASKS.md` and
-`../REQUIREMENTS_COVERAGE.md` for the authoritative, current status
+at all — stale as of 2026-09-05; see `../docs/hackathon/TASKS.md` and
+`../docs/hackathon/REQUIREMENTS_COVERAGE.md` for the authoritative, current status
 instead of trusting the list below without cross-checking.
 
 - Demo video — own feed: browser-flow footage + real-detection montage
@@ -403,8 +403,8 @@ instead of trusting the list below without cross-checking.
 - Confirming real camera GIS/department data via `scripts/onboard_from_catalogue.py`
   against the live sandbox (script exists, not yet run against the now-working access)
 
-`../HLD.md` (Technical Proposal) and `../SCALABILITY.md` (Plan for Scale)
+`docs/HLD.md` (Technical Proposal) and `docs/SCALABILITY.md` (Plan for Scale)
 are done, derived from this actual implementation plus `STRATEGY.md`. The
-Solution Presentation (`../Sentinel_Solution_Presentation.pptx`) is also
+Solution Presentation (`../docs/assets/Sentinel_Solution_Presentation.pptx`) is also
 done (v2, 2026-09-04) — a content refresh for today's findings is planned,
-see `../TASKS.md`.
+see `../docs/hackathon/TASKS.md`.

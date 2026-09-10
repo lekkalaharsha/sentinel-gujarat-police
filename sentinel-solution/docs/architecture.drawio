@@ -1,0 +1,165 @@
+<mxfile host="app.diagrams.net" modified="2026-09-10T00:00:00.000Z" agent="Sentinel" version="24.7.0" type="device">
+  <diagram name="System Architecture" id="sentinel-architecture">
+    <mxGraphModel dx="1400" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1650" pageHeight="1275" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ============ TITLE ============ -->
+        <mxCell id="title" value="Sentinel — System Architecture (Model 1 + Model 2 hybrid)" style="text;html=1;fontSize=22;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="10" width="900" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- ============ EXTERNAL / DEPARTMENTAL LAYER ============ -->
+        <mxCell id="lay_ext" value="26 Gujarat Dept. CCTV / Existing VMS (TRINETRA / NETRAM / VISWAS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;fontStyle=1;verticalAlign=top;align=left;spacingLeft=8;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="1560" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="ext_cams" value="Onboarded cameras (RTSP/ONVIF)&#10;30-camera sandbox pilot → 80,000 statewide" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="60" y="95" width="360" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="ext_cdn" value="Sandbox CDN — cctv.corp8.cloud&#10;HLS + cameras.json catalogue (password-gated)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="440" y="95" width="400" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="ext_rtsp" value="Public stream host — 103.250.160.189&#10;RTSP/WHEP, direct (no CDN proxy)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="860" y="95" width="360" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="ext_gov" value="Authorized gov. DBs (design-only, not built):&#10;VAHAN / SARTHI / CCTNS / eGujCop" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="95" width="340" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- ============ BACKEND CONTAINER ============ -->
+        <mxCell id="lay_backend" value="Sentinel Backend (FastAPI, single-node pilot → PostgreSQL/Kafka at regional+ scale)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaffea;strokeColor=#2d7d2d;fontSize=13;fontStyle=1;verticalAlign=top;align=left;spacingLeft=8;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="40" y="160" width="1560" height="620" as="geometry" />
+        </mxCell>
+
+        <!-- Ingest row -->
+        <mxCell id="be_catalogue" value="CatalogueClient&#10;(session-auth to CDN,&#10;cameras.json poll/refresh)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="70" y="200" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="be_streammgr" value="StreamManager&#10;(per-camera RTSP workers,&#10;PTS-based reconnect/backoff)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="360" y="200" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="be_hlsproxy" value="HLS Proxy (routes_stream.py)&#10;auth relay + SSRF-guarded segment/&#10;encryption-key fetch" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="650" y="200" width="300" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- Analytics pipeline row -->
+        <mxCell id="be_detector" value="YOLOv8 Vehicle Detector&#10;(stub fallback if unavailable)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="70" y="280" width="230" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="be_platedet" value="Plate Localizer&#10;(YOLOv11 ONNX / stub crop)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="320" y="280" width="230" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="be_ocr" value="PaddleOCR + homoglyph&#10;correction, pattern match" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="570" y="280" width="230" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="be_attrs" value="Attribute Extraction&#10;(HSV color, vehicle type)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="820" y="280" width="230" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="be_tracker" value="ByteTrack Tracker&#10;(within-camera) + consensus_plate()&#10;vote-share fusion" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1070" y="280" width="260" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="be_anomaly" value="Anomaly Detection&#10;(wrong-way, stopped-in-zone)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1350" y="280" width="230" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Identity/watchlist row -->
+        <mxCell id="be_identity" value="Identity Resolution&#10;plate-first / appearance-second,&#10;geo-feasibility gate, 60-min window" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="70" y="360" width="300" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="be_geo" value="Geo Feasibility Check&#10;(distance vs. elapsed time)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="390" y="360" width="230" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="be_watchlist" value="Watchlist Service&#10;(DB + in-memory cache,&#10;dedup logic)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="640" y="360" width="230" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="be_alert" value="Alert Lifecycle&#10;new → acknowledged → resolved/dismissed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="890" y="360" width="280" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- API + Auth + DB row -->
+        <mxCell id="be_api" value="FastAPI routers:&#10;/cameras /vehicle /watchlist /alerts&#10;/live /admin /auth" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="70" y="450" width="330" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="be_auth" value="Auth / RBAC&#10;hashed API keys, roles&#10;(viewer &lt; investigator &lt; admin),&#10;department scoping" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="430" y="450" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="be_audit" value="Audit Log&#10;purpose-bound, per-user scoped&#10;query trail (DPDP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="740" y="450" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="be_db" value="Database (SQLite pilot → PostgreSQL)&#10;CameraRegistry, VehicleIdentity,&#10;VehicleEvent, WatchlistEntry, Alert,&#10;AuditLog, ApiKeyEntry — additive migrations" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="440" width="530" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Retention/reconcile -->
+        <mxCell id="be_retention" value="Retention sweep (DPDP storage limitation)&#10;+ health/reconcile loop (camera up/down)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="70" y="540" width="600" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- ============ FRONTEND CONTAINER ============ -->
+        <mxCell id="lay_frontend" value="Sentinel Frontend (React 19 + Vite)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6f2ff;strokeColor=#3366cc;fontSize=13;fontStyle=1;verticalAlign=top;align=left;spacingLeft=8;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="40" y="820" width="1560" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="fe_shell" value="Sidebar / Topbar shell&#10;(API key entry, view nav)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe2f3;strokeColor=#3d85c6;" vertex="1" parent="1">
+          <mxGeometry x="70" y="860" width="260" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="fe_live" value="Camera Grid / Live Map /&#10;Camera Network (hls.js playback)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe2f3;strokeColor=#3d85c6;" vertex="1" parent="1">
+          <mxGeometry x="350" y="860" width="300" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="fe_vehicle" value="Search / Vehicle Intelligence&#10;(timeline, explainability panel,&#10;link_method + link_score trail)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe2f3;strokeColor=#3d85c6;" vertex="1" parent="1">
+          <mxGeometry x="670" y="860" width="330" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="fe_ops" value="Investigations / Watchlist /&#10;Alerts / Evidence / Reports" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe2f3;strokeColor=#3d85c6;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="860" width="300" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="fe_admin" value="System Health / Settings /&#10;Architecture / Command Center" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe2f3;strokeColor=#3d85c6;" vertex="1" parent="1">
+          <mxGeometry x="1340" y="860" width="230" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="fe_note" value="All views call the backend via X-Sentinel-API-Key header (api.js) — CDN/RTSP credentials never reach the browser." style="text;html=1;fontSize=11;fontStyle=2;align=left;" vertex="1" parent="1">
+          <mxGeometry x="70" y="920" width="900" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- ============ EDGES ============ -->
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="ext_cams" target="be_streammgr"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="ext_cdn" target="be_catalogue"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="ext_cdn" target="be_hlsproxy"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_catalogue" target="be_streammgr"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_streammgr" target="be_detector"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_detector" target="be_platedet"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_platedet" target="be_ocr"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_detector" target="be_attrs"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_ocr" target="be_tracker"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_attrs" target="be_tracker"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_tracker" target="be_anomaly"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_tracker" target="be_identity"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_identity" target="be_geo"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_identity" target="be_watchlist"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e15" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_watchlist" target="be_alert"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_anomaly" target="be_alert"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e17" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_identity" target="be_db"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e18" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_alert" target="be_db"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e19" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_api" target="be_db"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_api" target="be_auth"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e21" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_auth" target="be_audit"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e22" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_audit" target="be_db"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e23" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;" edge="1" parent="1" source="be_api" target="ext_gov">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1400" y="440" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e24" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="ext_rtsp" target="be_streammgr">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e25" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_api" target="fe_shell">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e26" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_hlsproxy" target="fe_live">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e27" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="fe_shell" target="fe_live"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e28" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="fe_shell" target="fe_vehicle"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e29" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="fe_shell" target="fe_ops"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e30" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="fe_shell" target="fe_admin"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
