@@ -1,31 +1,48 @@
+/* Sentinel — Police Vehicle Intelligence & Investigation Platform.
+   Deliberately dark, dense, low-chrome "command center" styling — this is
+   an investigator's tool, not a consumer dashboard. Dark is the only mode:
+   a real ops room doesn't switch to light theme at noon. */
 :root {
-  --text: #374151;
-  --text-h: #08060d;
-  --bg: #f4f5f7;
-  --panel-bg: #ffffff;
-  --border: #e5e4e7;
-  --accent: #1d4ed8;
-  --accent-bg: rgba(29, 78, 216, 0.08);
-  --danger: #dc2626;
-  --ok: #16a34a;
+  --bg: #0a0d12;
+  --bg-elevated: #0e131b;
+  --panel-bg: #121821;
+  --panel-bg-2: #182029;
+  --border: #232c39;
+  --border-strong: #313d4d;
+  --text: #b7c1cd;
+  --text-dim: #6b7684;
+  --text-h: #edf1f5;
 
-  font: 15px/145% system-ui, "Segoe UI", Roboto, sans-serif;
-  color-scheme: light dark;
+  /* Chrome accent — used for nav/links/focus, kept visually distinct from
+     the three evidence-state colors below so it never reads as a claim
+     about evidence confidence. */
+  --accent: #22d3ee;
+  --accent-bg: rgba(34, 211, 238, 0.1);
+
+  /* Evidence-state language, used EVERYWHERE a fact's certainty is shown.
+     Never mix these: CONFIRMED = a camera actually saw it. INFERRED = a
+     camera-less gap between two CONFIRMED sightings, estimated from
+     distance/time. PREDICTED = a forward feasibility filter over cameras
+     NOT yet confirmed to have seen the vehicle. See geo.py. */
+  --confirmed: #22c55e;
+  --confirmed-bg: rgba(34, 197, 94, 0.12);
+  --inferred: #f59e0b;
+  --inferred-bg: rgba(245, 158, 11, 0.12);
+  --predicted: #3b82f6;
+  --predicted-bg: rgba(59, 130, 246, 0.12);
+
+  --danger: #ef4444;
+  --danger-bg: rgba(239, 68, 68, 0.12);
+  --ok: #22c55e;
+  --warn: #f59e0b;
+
+  --mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+
+  font: 14px/1.45 "Segoe UI", system-ui, Roboto, sans-serif;
+  color-scheme: dark;
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #d1d5db;
-    --text-h: #f3f4f6;
-    --bg: #111318;
-    --panel-bg: #1a1c23;
-    --border: #2e303a;
-    --accent: #60a5fa;
-    --accent-bg: rgba(96, 165, 250, 0.12);
-  }
 }
 
 * {
@@ -45,6 +62,7 @@ body {
 h1, h2, h3, h4 {
   color: var(--text-h);
   margin: 0 0 8px;
+  font-weight: 600;
 }
 
 button {
@@ -52,6 +70,65 @@ button {
   cursor: pointer;
 }
 
-input {
+input, select {
   font: inherit;
+}
+
+a {
+  color: var(--accent);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 5px;
+}
+
+/* Evidence-state badge — the one visual element shown across every screen
+   that touches vehicle history, so its rules live here, not per-component. */
+.state-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.state-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.state-badge--confirmed {
+  color: var(--confirmed);
+  background: var(--confirmed-bg);
+}
+.state-badge--confirmed::before {
+  background: var(--confirmed);
+}
+.state-badge--inferred {
+  color: var(--inferred);
+  background: var(--inferred-bg);
+}
+.state-badge--inferred::before {
+  background: var(--inferred);
+}
+.state-badge--predicted {
+  color: var(--predicted);
+  background: var(--predicted-bg);
+}
+.state-badge--predicted::before {
+  background: var(--predicted);
 }

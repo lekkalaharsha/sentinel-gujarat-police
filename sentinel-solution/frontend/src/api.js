@@ -72,4 +72,26 @@ export const api = {
       body: JSON.stringify({ status }),
     }),
   hlsUrl: (cameraId) => `${API_BASE}/live/${cameraId}/index.m3u8`,
+
+  candidateCameras: (plate, purpose, caseId) => {
+    const params = new URLSearchParams({ purpose });
+    if (caseId) params.set("case_id", caseId);
+    return request(`/vehicle/${encodeURIComponent(plate)}/candidate-cameras?${params}`);
+  },
+  lastDetection: (cameraId) => request(`/cameras/${cameraId}/last-detection`),
+  eventCropUrl: (eventId) => `${API_BASE}/vehicle/event/${eventId}/crop`,
+  // Auth'd image fetch — API key is a header, not a query param, so an
+  // <img src> can't carry it. Fetch as a blob and hand back an object URL.
+  eventCropBlobUrl: async (eventId) => {
+    const apiKey = getApiKey();
+    const res = await fetch(`${API_BASE}/vehicle/event/${eventId}/crop`, {
+      headers: apiKey ? { "X-Sentinel-API-Key": apiKey } : {},
+    });
+    if (!res.ok) throw new Error(`${res.status}`);
+    return URL.createObjectURL(await res.blob());
+  },
+  auditLog: (limit = 200) => request(`/admin/audit-log?limit=${limit}`),
+  retentionPolicy: () => request("/admin/retention-policy"),
+  triggerPurge: () => request("/admin/purge", { method: "POST" }),
+  recentDetections: (limit = 20) => request(`/vehicle/recent?limit=${limit}`),
 };

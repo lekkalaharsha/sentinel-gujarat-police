@@ -25,7 +25,7 @@ export default function ExplainabilityPanel({ sighting }) {
     <div className="explain-panel">
       <h4>Why was this sighting linked?</h4>
       <p className="explain-panel__method">{METHOD_LABEL[link.method] || link.method || "unknown"}</p>
-      <Bar label="Plate confidence" value={sighting.plate_confidence} tone="plate" />
+      <Bar label="Plate consensus strength" value={sighting.plate_confidence} tone="plate" />
       <Bar label="Appearance (Re-ID) similarity" value={link.reid_similarity} tone="reid" />
       <Bar label="Temporal consistency" value={link.temporal_consistency} tone="temporal" />
       <div className="explain-panel__fused">

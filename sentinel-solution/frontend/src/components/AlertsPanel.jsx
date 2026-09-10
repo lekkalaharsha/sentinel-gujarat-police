@@ -18,6 +18,14 @@ const TRANSITION_LABEL = {
   resolved: "Resolve",
   dismissed: "Dismiss (false +ve)",
 };
+// Named anomaly alerts (analytics/anomaly.py) vs. the original watchlist
+// match — same governed lifecycle, just a different trigger, so badged
+// rather than given a separate panel.
+const ALERT_TYPE_LABEL = {
+  watchlist: "Watchlist match",
+  wrong_way: "Wrong-way vehicle",
+  stopped_restricted_zone: "Stopped in restricted zone",
+};
 
 export default function AlertsPanel() {
   const [alerts, setAlerts] = useState([]);
@@ -71,6 +79,9 @@ export default function AlertsPanel() {
           return (
             <li key={a.id} className={`alert-item alert-item--${status}`}>
               <div>
+                <span className={`alert-item__type alert-item__type--${a.alert_type || "watchlist"}`}>
+                  {ALERT_TYPE_LABEL[a.alert_type] || a.alert_type || "Watchlist match"}
+                </span>
                 <strong>{a.plate}</strong> at <strong>{a.camera_id}</strong>
                 <div className="alert-item__reason">{a.reason}</div>
                 <div className="alert-item__time">{new Date(a.created_at).toLocaleString()}</div>

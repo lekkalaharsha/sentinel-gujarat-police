@@ -35,7 +35,7 @@ export default function VehicleTimeline({ sightings, routeSegments, selectedInde
                   <span>{s.location || "unknown location"}</span>
                   <span>
                     {s.plate_read_at_this_camera ? (
-                      <span className="badge badge--plate">plate read ({Math.round((s.plate_confidence || 0) * 100)}%)</span>
+                      <span className="badge badge--plate">plate read (consensus {Math.round((s.plate_confidence || 0) * 100)}%)</span>
                     ) : (
                       <span className="badge badge--anon">anonymous — matched by appearance</span>
                     )}
