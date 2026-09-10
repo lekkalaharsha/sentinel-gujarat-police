@@ -10,16 +10,29 @@ issues") before trusting this file if it's more than a day or two old.
 
 ## P0 — hard submission blockers
 
-- [ ] **Re-verify camera-registry auto-population before recording video.**
-      Originally: "backend has 30 live workers but registry shows 0
-      onboarded." **Partially stale** — `main.py`'s health-sync loop
-      auto-creates a bare `CameraRegistry` row for any active worker
-      (confirmed empirically 2026-09-05: a fresh DB showed "Onboarded 30"
-      with zero manual onboarding calls). What's still missing is
-      department/GIS metadata on those auto-created rows — run
-      `scripts/onboard_from_catalogue.py` for that, but the "empty-looking
-      app" risk from the original note is likely gone. Confirm this on the
-      actual recording machine before trusting it, not just this note.
+- [x] **Camera-registry auto-population — closed 2026-09-10.**
+      `main.py`'s health-sync loop auto-creates a bare `CameraRegistry`
+      row for any active worker, so the "empty-looking app" risk was
+      already gone (confirmed 2026-09-05). Ran
+      `scripts/onboard_from_catalogue.py` against the live 30-camera
+      sandbox for real to close the remaining department/GIS-metadata
+      gap. **Found and fixed a real regression risk first**: the script
+      unconditionally overwrote `department`/`latitude`/`longitude` with
+      its keyword-inference result even when that inference was `None`
+      — running it as-is would have wiped the 5 already-correct manual
+      department tags (cam01-05: Police/Municipal Corporation/GSRTC/
+      Health/Panchayat) back to unassigned. Fixed by having the script
+      fetch the current registry state first and only override a field
+      when its own inference actually found something, falling back to
+      the existing value otherwise. Verified end-to-end against the live
+      sandbox: all 30 cameras now carry real location names from the
+      catalogue; GPS coordinates populated for 22/30 (8 have no
+      confident area-centroid match); department stays honestly at 7/30
+      (cam01-05 preserved + cam17→GSRTC/cam19→Panchayat newly matched by
+      keyword) — the other 23 real camera names (street/landmark names,
+      not department-suggestive) genuinely can't be classified without
+      organizer-provided ground truth or manual per-camera investigation,
+      not a script bug. Full backend suite 55/55 passed after the fix.
 - [ ] **Record the own-feed demo video** (§9.3, 2–3 min, must show a real
       working backend, no mock-ups). Script: `DEMO_SCRIPT_OWN_FEED.md` +
       `scripts/demo_end_to_end.py` with `SENTINEL_DEMO_PERSIST=1`, then
