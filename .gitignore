@@ -13,6 +13,14 @@ __pycache__/
 *.onnx
 .paddleocr/
 
+# Evidence crops — generated at runtime from live/sandbox footage, not
+# source, not a deliverable to commit (see config.CROPS_DIR).
+sentinel-solution/backend/data/crops/
+
+# Real ANPR scan output — real sandbox camera images (scripts/real_anpr_scan.py),
+# not source, not a deliverable; findings are written up in HLD.md/REQUIREMENTS_COVERAGE.md instead.
+sentinel-solution/backend/data/anpr_scan/
+
 # Node
 node_modules/
 dist/
@@ -24,8 +32,16 @@ dist-ssr/
 deck-build/.venv/
 deck-build/preview*/
 
+# Demo recording output — stock footage clips + browser screen recordings
+# used while producing the submission video, not source, not a deliverable
+# (the deliverable is the final rendered video itself, tracked elsewhere).
+sentinel-solution/demo_output/
+
 # Editor/OS
 .vscode/*
 !.vscode/extensions.json
 .idea/
 .DS_Store
+
+# Microsoft Office lock files (transient, created while a .pptx/.docx is open)
+~$*
