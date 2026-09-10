@@ -115,11 +115,22 @@ issues") before trusting this file if it's more than a day or two old.
       `docs/assets/sample_gap_analysis_report.pdf` for the submission.
       Full backend suite re-run, 50/50 passed; `npm run
       build`/`npm run lint` both clean.
-- [ ] Close the 3 documentation-honesty points from `MODULE_GAP_ANALYSIS.md`:
-      multi-vendor claim wording ("designed for" vs. "demonstrated with"),
-      private/commercial CCTV coverage (currently unaddressed), external-DB
-      -integration honesty (confirm HLD is explicit VAHAN/SARTHI/etc. is
-      design-only).
+- [x] **Doc-honesty points — closed 2026-09-10.**
+      1. **Multi-vendor wording** — `docs/submission/EMAIL_DRAFT.md`
+         reworded: no longer implies proven integration with
+         VISWAS/NETRAM/TRINETRA, now explicit that this submission
+         demonstrates the architecture against the hackathon sandbox,
+         not a live connection to those systems.
+      2. **Private/commercial CCTV coverage** — added a paragraph to
+         `HLD.md`'s onboarding section: same onboarding flow as
+         departmental cameras, tagged by owning entity, contingent on
+         that entity's access grant; explicitly labeled design-only, not
+         built or demonstrated.
+      3. **External-DB integration honesty** — confirmed already closed,
+         `HLD.md`'s "query, don't copy" principle already states this
+         explicitly for VAHAN/SARTHI/eGujCop/CCTNS.
+      `MODULE_GAP_ANALYSIS.md`'s discussion points section updated to
+      mark all 3 resolved. Docs-only change, no code touched.
 - [ ] `CODEX_HANDOFF_PROMPT.md`'s ML-3: empirically justify
       `EMBEDDING_SIMILARITY_THRESHOLD=0.80` — still blocked on lacking
       same-vehicle real-footage pairs; the extended deadline may make this

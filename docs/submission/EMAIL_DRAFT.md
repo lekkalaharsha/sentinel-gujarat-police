@@ -12,12 +12,17 @@ hackathon and how it fits alongside Gujarat's existing CCTV
 infrastructure — a summary below.
 
 **What Sentinel is:** an open, vendor-neutral interoperability and
-intelligence layer that sits *above* existing departmental CCTV/VMS
-infrastructure — including VISWAS/NETRAM/TRINETRA — rather than
-replacing it. It registers cameras, normalizes feeds into one event
-model, and correlates vehicle observations **across departments**,
-connecting to authorized databases (VAHAN, CCTNS, eGujCop) without
-requiring any department to change what they already run.
+intelligence layer *designed* to sit above existing departmental CCTV/VMS
+infrastructure — including systems like VISWAS/NETRAM/TRINETRA — rather
+than replacing it. This submission demonstrates that architecture against
+the hackathon's own sandbox feeds (RTSP/ONVIF-style ingestion, standard
+protocols), not against a live VISWAS/NETRAM/TRINETRA connection we don't
+have access to — the vendor-neutral, standards-based design is what makes
+that integration feasible without a rebuild, not a claim that it's already
+been proven against those specific systems. It registers cameras,
+normalizes feeds into one event model, and correlates vehicle observations
+**across departments**, connecting to authorized databases (VAHAN, CCTNS,
+eGujCop) without requiring any department to change what they already run.
 
 **Architecture:** a Model 1 + Model 2 hybrid (per the challenge's own
 "combine suitable elements from two or more models" allowance) —

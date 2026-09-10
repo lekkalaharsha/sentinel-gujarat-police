@@ -135,6 +135,16 @@ strategy (edge inference, selective video egress).
   their multi-vendor support on; see `../../docs/strategy/RESEARCH_EXISTING_SYSTEMS.md` §2).
   The sandbox exposes plain RTSP, so the pilot connects directly; ONVIF is
   the documented onboarding path for real heterogeneous department cameras.
+- **Private/commercial CCTV coverage (societies, malls, commercial
+  establishments):** the problem statement asks for this "wherever
+  feasible and permitted" — not built or demonstrated this session (no
+  private/commercial feeds exist in the hackathon sandbox to test
+  against), but the same onboarding path above already covers it by
+  design: a private-entity camera is onboarded the same way as a
+  departmental one (`POST /cameras`/`POST /cameras/bulk`, ONVIF/RTSP),
+  tagged with the owning entity in place of `department`, contingent on
+  that entity's explicit consent/access grant — no separate integration
+  layer needed. This is a design-only claim, not a demonstrated one.
 
 - **Cross-camera timing doesn't depend on camera clocks:** within a
   camera, timing uses PTS deltas (never wall-clock — required for
