@@ -14,7 +14,35 @@ function markerColor(status) {
   return "#16a34a";
 }
 
-export default function MapView({ cameras, route, onSelectCamera, selectedCameraId }) {
+const UNASSIGNED_COLOR = "#9ca3af";
+
+// Deterministic string -> hue, so a given department/camera_type value always
+// gets the same color across renders and between the map and its legend
+// (LiveMapView derives the same legend entries from the same cameras array).
+function hashHue(value) {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+  return hash % 360;
+}
+
+// Model 1 spec requires department/type map layers (see MODULE_GAP_ANALYSIS.md
+// and REQUIREMENTS.md's R1) — this is the shared color function between the
+// map markers and LiveMapView's legend, so "unassigned"/"unknown" always
+// renders as UNASSIGNED_COLOR in both places.
+export function categoryColor(value) {
+  if (!value) return UNASSIGNED_COLOR;
+  return `hsl(${hashHue(String(value))}, 65%, 45%)`;
+}
+
+function cameraColor(cam, mode) {
+  if (mode === "department") return categoryColor(cam.department);
+  if (mode === "camera_type") return categoryColor(cam.camera_type);
+  return markerColor(cam.live ? "healthy" : "unhealthy");
+}
+
+export default function MapView({ cameras, route, onSelectCamera, selectedCameraId, mode = "health" }) {
   const located = useMemo(
     () => cameras.filter((c) => c.latitude != null && c.longitude != null),
     [cameras]
@@ -39,27 +67,32 @@ export default function MapView({ cameras, route, onSelectCamera, selectedCamera
         attribution='&copy; OpenStreetMap contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      {located.map((cam) => (
-        <CircleMarker
-          key={cam.id}
-          center={[cam.latitude, cam.longitude]}
-          radius={cam.id === selectedCameraId ? 10 : 7}
-          pathOptions={{
-            color: markerColor(cam.live ? "healthy" : "unhealthy"),
-            fillColor: markerColor(cam.live ? "healthy" : "unhealthy"),
-            fillOpacity: 0.85,
-          }}
-          eventHandlers={{ click: () => onSelectCamera?.(cam.id) }}
-        >
-          <Popup>
-            <strong>{cam.id}</strong>
-            <br />
-            {cam.location || "location unknown"}
-            <br />
-            {cam.live ? "live" : "offline"} · {cam.codec || "codec unknown"}
-          </Popup>
-        </CircleMarker>
-      ))}
+      {located.map((cam) => {
+        const color = cameraColor(cam, mode);
+        return (
+          <CircleMarker
+            key={cam.id}
+            center={[cam.latitude, cam.longitude]}
+            radius={cam.id === selectedCameraId ? 10 : 7}
+            pathOptions={{
+              color,
+              fillColor: color,
+              fillOpacity: 0.85,
+            }}
+            eventHandlers={{ click: () => onSelectCamera?.(cam.id) }}
+          >
+            <Popup>
+              <strong>{cam.id}</strong>
+              <br />
+              {cam.location || "location unknown"}
+              <br />
+              {cam.live ? "live" : "offline"} · {cam.codec || "codec unknown"}
+              <br />
+              {cam.department || "department unassigned"} · {cam.camera_type || "type unknown"}
+            </Popup>
+          </CircleMarker>
+        );
+      })}
       {routeLatLngs.length > 1 && (
         <Polyline positions={routeLatLngs} pathOptions={{ color: markerColor("route"), weight: 3, dashArray: "6 6" }} />
       )}
