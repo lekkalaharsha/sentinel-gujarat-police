@@ -321,7 +321,8 @@ def search_by_attributes(
         q = q.filter(VehicleEvent.color == color)
     if partial_plate:
         q = q.filter(VehicleEvent.plate.like(f"%{normalize_plate(partial_plate)}%"))
-    events = q.order_by(VehicleEvent.observed_at.asc()).limit(200).all()
+    total_count = q.count()
+    events = q.order_by(VehicleEvent.observed_at.desc()).limit(200).all()
 
     cameras = _cameras_by_id(db, (e.camera_id for e in events))
     out = []
@@ -338,4 +339,4 @@ def search_by_attributes(
                 "color": e.color,
             }
         )
-    return {"query": query_desc, "matches": out}
+    return {"query": query_desc, "matches": out, "total_count": total_count, "truncated": total_count > 200}

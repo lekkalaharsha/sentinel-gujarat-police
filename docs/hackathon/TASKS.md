@@ -84,9 +84,16 @@ issues") before trusting this file if it's more than a day or two old.
       coverage added in `tests/test_auth.py`
       (`test_invalid_role_raises_400`, `test_valid_role_creates_key`);
       full suite re-run, 45/45 passed.
-- [ ] `search_by_attributes` truncates to 200 results with no total-count
-      signal — an investigator can get zero recent hits with no
-      indication results were cut off. (`routes_vehicle.py`)
+- [x] **`search_by_attributes` truncation — fixed 2026-09-10.**
+      `routes_vehicle.py` now runs a `count()` query alongside the
+      limited fetch and returns `total_count`/`truncated: total_count >
+      200` in the response; switched ordering from oldest-first
+      (`asc()`) to newest-first (`desc()`) so a truncated response
+      surfaces the most recent matches rather than silently dropping
+      them. `SearchView.jsx` now shows "N of M total" and a truncation
+      notice when applicable. Regression coverage added in
+      `tests/test_vehicle_search.py`; full suite re-run, 47/47 passed.
+      `npm run build`/`npm run lint` both clean, no new warnings.
 - [ ] Sample gap-analysis PDF export (endpoint exists, no exported sample
       produced yet for the submission).
 - [ ] Close the 3 documentation-honesty points from `MODULE_GAP_ANALYSIS.md`:
