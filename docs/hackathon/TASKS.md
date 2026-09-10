@@ -72,12 +72,13 @@ issues") before trusting this file if it's more than a day or two old.
       `SearchView.jsx` and/or `VehicleIntelligence.jsx`. Unknown whether
       the race survived the rebuild or was incidentally fixed — check
       before assuming either way.
-- [ ] `routes_auth.py`'s `create_api_key` still returns `{"error": ...}`
-      with HTTP 200 instead of a proper 400 for an invalid role — cheap
-      fix. (The matching `routes_cameras.py` `get_camera` issue TASKS.md
-      used to list here is already fixed — that endpoint now raises a
-      proper `HTTPException` consistently, confirmed by reading the
-      current code 2026-09-05.)
+- [x] **`create_api_key` 200-vs-400 — fixed 2026-09-10.** `routes_auth.py`
+      now imports `HTTPException` and raises `HTTPException(400, "role
+      must be one of admin, investigator, viewer")` for an invalid role
+      instead of returning `{"error": ...}` with HTTP 200. Regression
+      coverage added in `tests/test_auth.py`
+      (`test_invalid_role_raises_400`, `test_valid_role_creates_key`);
+      full suite re-run, 45/45 passed.
 - [ ] `search_by_attributes` truncates to 200 results with no total-count
       signal — an investigator can get zero recent hits with no
       indication results were cut off. (`routes_vehicle.py`)

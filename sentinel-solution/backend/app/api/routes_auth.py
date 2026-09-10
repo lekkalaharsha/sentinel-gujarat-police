@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import secrets
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -26,7 +26,7 @@ def create_api_key(
     _admin: Principal = Depends(require_role("admin")),
 ):
     if body.role not in ("admin", "investigator", "viewer"):
-        return {"error": "role must be one of admin, investigator, viewer"}
+        raise HTTPException(400, "role must be one of admin, investigator, viewer")
     raw_key = secrets.token_urlsafe(24)
     db.add(ApiKeyEntry(key_hash=hash_key(raw_key), user_id=body.user_id, role=body.role, department=body.department))
     db.commit()
