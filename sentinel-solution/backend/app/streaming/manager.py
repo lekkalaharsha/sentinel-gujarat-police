@@ -43,24 +43,35 @@ class StreamManager:
         with self._lock:
             current_ids = set(self._workers.keys())
             live_ids = set(live_cameras.keys())
-
-            for cam_id in live_ids - current_ids:
-                cam = live_cameras[cam_id]
-                worker = RtspCameraWorker(cam.id, cam.rtsp_url, self._handle_frame)
-                worker.start()
-                self._workers[cam_id] = worker
-                logger.info("started worker for camera %s (%s)", cam_id, cam.location)
-
-            for cam_id in current_ids - live_ids:
-                self._workers.pop(cam_id).stop()
+            to_start = [live_cameras[cam_id] for cam_id in live_ids - current_ids]
+            to_stop = [(cam_id, self._workers.pop(cam_id)) for cam_id in current_ids - live_ids]
+            for cam_id, _ in to_stop:
                 self._frame_counters.pop(cam_id, None)
-                logger.info("stopped worker for camera %s (no longer live)", cam_id)
+
+        # worker.start()/stop() happen OUTSIDE the lock: stop() joins the
+        # worker's thread (up to 5s), which that same thread's frame
+        # callback (_handle_frame) needs this SAME lock to complete — held
+        # across the join, a batch of simultaneous camera drops would
+        # stall _handle_frame for every OTHER camera too, not just the
+        # ones being stopped, for up to N*5s. Found by
+        # software-engineering review 2026-09-04. The dict mutations above
+        # (the only part that actually needs the lock) already happened.
+        for cam in to_start:
+            worker = RtspCameraWorker(cam.id, cam.rtsp_url, self._handle_frame)
+            worker.start()
+            with self._lock:
+                self._workers[cam.id] = worker
+            logger.info("started worker for camera %s (%s)", cam.id, cam.location)
+        for cam_id, worker in to_stop:
+            worker.stop()
+            logger.info("stopped worker for camera %s (no longer live)", cam_id)
 
     def stop_all(self) -> None:
         with self._lock:
-            for worker in self._workers.values():
-                worker.stop()
+            workers = list(self._workers.values())
             self._workers.clear()
+        for worker in workers:
+            worker.stop()
 
     @property
     def active_camera_ids(self):

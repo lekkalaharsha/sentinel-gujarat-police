@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from .. import config
+from ..db.models import AuditLog
 from ..db.retention import purge_expired
 from .auth import Principal, require_role
 from .deps import get_db
@@ -40,3 +41,39 @@ def retention_policy(_principal: Principal = Depends(require_role("investigator"
 def trigger_purge(db: Session = Depends(get_db), _admin: Principal = Depends(require_role("admin"))):
     """Run the retention purge now (admin only). Idempotent."""
     return purge_expired(db)
+
+
+@router.get("/audit-log")
+def list_audit_log(
+    limit: int = 200,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("investigator")),
+):
+    """Read view of the purpose-bound query log every /vehicle/* lookup
+    writes to (see routes_vehicle.py). Powers the Investigations screen —
+    real accountability data, not a mock activity feed.
+
+    Scoped to the caller's own queries unless they're admin: despite the
+    `/admin` prefix, this only required `investigator` role, so any
+    investigator could read every OTHER investigator's/department's
+    search purposes and case IDs — a real cross-department privacy leak,
+    found by security review 2026-09-04. AuditLog has no department
+    column to filter on directly, so scoping to the caller's own
+    `user_id` is the fix that needs no schema change and preserves the
+    screen's "see my own accountability trail" value; admin keeps the
+    full cross-user oversight view."""
+    query = db.query(AuditLog)
+    if principal.role != "admin":
+        query = query.filter(AuditLog.user_id == principal.user_id)
+    rows = query.order_by(AuditLog.created_at.desc()).limit(min(limit, 500)).all()
+    return [
+        {
+            "id": r.id,
+            "user_id": r.user_id,
+            "purpose": r.purpose,
+            "case_id": r.case_id,
+            "query": r.query,
+            "created_at": r.created_at.isoformat(),
+        }
+        for r in rows
+    ]

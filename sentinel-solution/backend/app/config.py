@@ -45,6 +45,27 @@ CATALOGUE_REFRESH_INTERVAL_S = float(os.environ.get("CATALOGUE_REFRESH_INTERVAL_
 # Database
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./sentinel.db")
 
+# CORS: defaults to the known Vite dev origins, not "*". Found by security
+# review 2026-09-04 — a wildcard on a backend holding police investigative
+# data is overly permissive; low-severity on its own today (the custom
+# X-Sentinel-API-Key header isn't auto-attached cross-origin by browsers,
+# so this wasn't an open door), but combined with any future credentialed
+# auth it would be. Override with a comma-separated list for a real
+# deployment's actual frontend origin(s).
+CORS_ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get(
+        "SENTINEL_CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+    ).split(",")
+    if o.strip()
+]
+
+# Evidence crops: the highest-confidence detection image for each sighting,
+# saved to disk so the Vehicle Intelligence / Evidence UI can show a real
+# image instead of a placeholder. Purged alongside their VehicleEvent row by
+# the retention sweep (see db/retention.py).
+CROPS_DIR = os.environ.get("SENTINEL_CROPS_DIR", "./data/crops")
+
 # Analytics sampling — process every Nth frame per camera to keep CPU/GPU load
 # bounded across many simultaneous cameras. Tune per hardware.
 ANALYTICS_FRAME_STRIDE = int(os.environ.get("ANALYTICS_FRAME_STRIDE", "5"))
@@ -53,6 +74,18 @@ ANALYTICS_FRAME_STRIDE = int(os.environ.get("ANALYTICS_FRAME_STRIDE", "5"))
 # out of the box (see analytics/detector.py); no fine-tuning needed for
 # vehicle-class detection, unlike plate OCR.
 YOLO_WEIGHTS = os.environ.get("SENTINEL_YOLO_WEIGHTS", "yolov8n.pt")
+
+# Real trained plate localizer (analytics/plate_detector.py's
+# YoloPlateDetector) — morsetechlab/yolov11-license-plate-detection, ONNX
+# weights, AGPL-3.0 (accepted decision, see HLD.md §10). Not auto-downloaded
+# like YOLO_WEIGHTS (not on the ultralytics hub) — fetch once with:
+#   curl -sL -o weights/license-plate-finetune-v1n.onnx \
+#     https://huggingface.co/morsetechlab/yolov11-license-plate-detection/resolve/main/license-plate-finetune-v1n.onnx
+# If the file isn't present, main.py falls back to StubPlateDetector's
+# heuristic crop, loudly, same honest-fallback pattern as the other models.
+PLATE_DETECTOR_WEIGHTS = os.environ.get(
+    "SENTINEL_PLATE_DETECTOR_WEIGHTS", "weights/license-plate-finetune-v1n.onnx"
+)
 
 # Low-confidence plate-read suppression (see analytics/pipeline.py): a fused
 # plate confidence below this is treated as UNREAD — the vehicle is still
@@ -73,3 +106,33 @@ RETENTION_SWEEP_INTERVAL_S = float(os.environ.get("SENTINEL_RETENTION_SWEEP_INTE
 
 API_HOST = os.environ.get("API_HOST", "0.0.0.0")
 API_PORT = int(os.environ.get("API_PORT", "8000"))
+
+# Named-anomaly-alert thresholds (see analytics/anomaly.py). Image-plane
+# metrics only (no camera calibration — see VehicleEvent.direction_deg's
+# docstring), so these are relative/tunable-per-deployment, not physical
+# units with a universal "correct" value.
+#
+# A track's average direction must differ from the camera's configured
+# expected_direction_deg by at least this many degrees to count as
+# wrong-way (120, not 180, because within-camera direction estimates are
+# noisy over a short track — requiring a near-exact opposite would miss
+# real wrong-way vehicles that don't drive in a perfectly straight line).
+WRONG_WAY_ANGLE_THRESHOLD_DEG = float(os.environ.get("SENTINEL_WRONG_WAY_ANGLE_THRESHOLD_DEG", "120"))
+# Below this image-plane speed (px/s), a track is "basically stationary" —
+# direction is meaningless noise at that point, not evidence of wrong-way
+# travel, so wrong-way checks are skipped rather than flagging parked cars.
+WRONG_WAY_MIN_SPEED_PX_S = float(os.environ.get("SENTINEL_WRONG_WAY_MIN_SPEED_PX_S", "3"))
+# A track's dwell_time_s must exceed this, in a camera flagged
+# is_restricted_zone, to raise a stopped-in-restricted-zone alert.
+STOPPED_ZONE_DWELL_THRESHOLD_S = float(os.environ.get("SENTINEL_STOPPED_ZONE_DWELL_THRESHOLD_S", "30"))
+
+# Recording-only scope: when set (comma-separated camera ids), restricts the
+# live catalogue to just this subset — used to record the own-feed demo
+# video against its actual 5-camera scenario without also surfacing the
+# other real sandbox cameras this environment happens to have onboarded
+# (DEMO_SCRIPT_OWN_FEED.md's guardrail: this submission must not present
+# itself as a live-sandbox/all-cameras demo, that's a separate, still-
+# blocked submission). Unset in normal operation — has zero effect then.
+DEMO_CAMERA_SCOPE = {
+    c.strip() for c in os.environ.get("SENTINEL_DEMO_CAMERA_SCOPE", "").split(",") if c.strip()
+} or None

@@ -61,6 +61,66 @@ class InferredSegment:
     basis: str  # human-readable explanation of the inference
 
 
+def rank_candidate_cameras(last_camera, observed_at: dt.datetime, all_cameras: List) -> List[dict]:
+    """Forward-looking counterpart to build_inferred_segments: given where a
+    vehicle was last CONFIRMED and when, rank every other GPS-registered
+    camera by whether it's still physically reachable by now.
+
+    Same honesty rules as the backward-looking case: straight-line distance
+    is a lower bound on road distance, so "FEASIBLE" means "not physically
+    ruled out", never "the vehicle is predicted to be here". Cameras needing
+    a speed above MAX_PLAUSIBLE_KMH are ELIMINATED — hard ruled-out, not
+    just deprioritised, which is the actual "candidate pruning" value: most
+    of an 80k-camera network is instantly irrelevant to a specific vehicle's
+    search radius.
+
+    `last_camera` may be None (sighting predates the registry, or the camera
+    was deregistered) or lack GPS — both return an empty, honestly-noted list
+    rather than guessing. Same for `observed_at` being in the future relative
+    to now: in real production data this cannot happen (observed_at is
+    always stamped from the server's own utcnow() at persist time, see
+    db/models.py), but it WAS caught here by real testing against leftover
+    demo data with a hardcoded future timestamp — computing "required speed"
+    from a negative elapsed time produces nonsense (a huge fake speed that
+    happens to always read as ELIMINATED, but for the wrong reason, and the
+    displayed "basis" text would show a negative elapsed-seconds figure that
+    would look broken to an investigator). Guarded defensively rather than
+    trusting every caller's data to be well-formed.
+    """
+    if last_camera is None or last_camera.latitude is None or last_camera.longitude is None:
+        return []
+
+    elapsed_s = (dt.datetime.utcnow() - observed_at).total_seconds()
+    if elapsed_s <= 0:
+        return []
+    elapsed_h = elapsed_s / 3600.0
+
+    out = []
+    for cam in all_cameras:
+        if cam.id == last_camera.id:
+            continue
+        if cam.latitude is None or cam.longitude is None:
+            continue
+        distance_km = haversine_km(last_camera.latitude, last_camera.longitude, cam.latitude, cam.longitude)
+        required_kmh = distance_km / elapsed_h
+        feasible = required_kmh <= MAX_PLAUSIBLE_KMH
+        out.append({
+            "camera_id": cam.id,
+            "location": cam.location_name,
+            "distance_km": round(distance_km, 2),
+            "elapsed_s": round(elapsed_s, 1),
+            "required_min_speed_kmh": round(required_kmh, 1),
+            "status": "FEASIBLE" if feasible else "ELIMINATED",
+            "basis": (
+                f"{distance_km:.2f} km away; reaching it now requires >={required_kmh:.0f} km/h "
+                f"average since the last sighting {elapsed_s:.0f}s ago"
+                + ("" if feasible else f" — exceeds the {MAX_PLAUSIBLE_KMH:.0f} km/h plausibility ceiling, ruled out")
+            ),
+        })
+    out.sort(key=lambda c: c["required_min_speed_kmh"])
+    return out
+
+
 def build_inferred_segments(points: List[RoutePoint]) -> List[dict]:
     """Given time-ordered OBSERVED points, emit an INFERRED segment for each
     consecutive pair at DIFFERENT cameras. Same-camera consecutive points

@@ -57,6 +57,48 @@ def infer_department(name: str | None) -> str | None:
     return None
 
 
+# Area-centroid GPS, NOT measured camera GPS — the catalogue provides no
+# coordinates at all (see CameraInfo.from_api), so this is a best-effort
+# fallback for the GIS map rather than leaving every camera un-plotted.
+# Deliberately conservative: only town/city names confidently identified are
+# listed here. An unmatched/ambiguous name (e.g. a small village name with
+# no confident reference) is left with NO coordinates rather than a guessed
+# one — a wrong pin on a police GIS map is worse than an honestly-missing
+# pin. Always verify against real survey data before operational use.
+AREA_COORDS: dict[str, tuple[float, float]] = {
+    "ahmedabad": (23.0225, 72.5714),
+    "gandhinagar": (23.2156, 72.6369),
+    "adalaj": (23.1667, 72.5833),
+    "junagadh": (21.5222, 70.4579),
+    "somnath": (20.8880, 70.4017),
+    "gir-somnath": (20.8880, 70.4017),
+    "rajkot": (22.3039, 70.8022),
+    "navsari": (20.9467, 72.9520),
+    "bilimora": (20.7667, 72.9500),
+    "patan": (23.8493, 72.1266),
+    "gandhidham": (23.0753, 70.1337),
+    "dehgam": (23.1667, 72.8167),
+    # Specific Ahmedabad landmarks/localities recognized with confidence —
+    # kept separate from the city-level "ahmedabad" entry (not added above)
+    # because most Ahmedabad camera names in this catalogue are streets/
+    # circles too specific and numerous to hardcode reliably; these three
+    # are well-known enough to be a safe exception.
+    "paldi": (23.0169, 72.5645),
+    "visat": (23.0754, 72.5514),
+    "chiman bhai bridge": (23.0326, 72.5764),
+}
+
+
+def infer_coords(name: str | None) -> tuple[float | None, float | None]:
+    if not name:
+        return None, None
+    lowered = name.lower()
+    for keyword, coords in AREA_COORDS.items():
+        if keyword in lowered:
+            return coords
+    return None, None
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--api-base", default="http://localhost:8000")
@@ -76,16 +118,26 @@ def main():
 
     payload = []
     unassigned = []
+    no_coords = []
     for cam_id, cam in cameras.items():
-        department = infer_department(cam.raw.get("name") or cam.location)
+        source_name = cam.raw.get("name") or cam.location
+        department = infer_department(source_name)
+        lat, lon = infer_coords(source_name)
         if department is None:
             unassigned.append(cam_id)
-        payload.append({"id": cam_id, "department": department, "location_name": cam.location})
+        if lat is None:
+            no_coords.append(cam_id)
+        payload.append({
+            "id": cam_id, "department": department, "location_name": cam.location,
+            "latitude": lat, "longitude": lon,
+        })
 
     print(f"{len(payload)} cameras found; {len(unassigned)} could not be classified by keyword: {unassigned}")
+    print(f"{len(no_coords)} have no area-centroid match (left un-plotted, not guessed): {no_coords}")
     if args.dry_run:
         for entry in payload:
-            print(f"  {entry['id']}: {entry['department'] or 'UNASSIGNED'} ({entry['location_name']})")
+            coord_str = f"{entry['latitude']:.3f},{entry['longitude']:.3f}" if entry["latitude"] else "no-coords"
+            print(f"  {entry['id']}: {entry['department'] or 'UNASSIGNED'} ({entry['location_name']}) [{coord_str}]")
         return
 
     resp = requests.post(

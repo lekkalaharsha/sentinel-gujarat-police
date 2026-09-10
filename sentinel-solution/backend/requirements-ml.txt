@@ -16,6 +16,19 @@ lap==0.5.13              # required by ultralytics' built-in ByteTrack (model.tr
 paddleocr==2.9.1         # PaddleOcrPlateReader (analytics/anpr.py) — pin matters, see above
 paddlepaddle==2.6.2      # PaddleOCR's inference backend
 
+# YoloPlateDetector (analytics/plate_detector.py) — real trained plate
+# localizer, morsetechlab/yolov11-license-plate-detection (AGPL-3.0, see
+# HLD.md §10 for the licensing decision). Loading the .onnx weight the
+# first time triggers ultralytics' "requirements: AutoUpdate" behavior,
+# which silently upgrades `onnx`/`onnxruntime` to versions that pull in
+# protobuf>=4 — that BREAKS paddlepaddle 2.6.2 at import time
+# (`TypeError: Descriptors cannot be created directly`), reproduced
+# empirically, not theoretical. Pin all three explicitly so a fresh venv
+# never hits ultralytics' auto-update path at all.
+onnx==1.14.1
+onnxruntime==1.17.3
+protobuf==3.20.2
+
 # WINDOWS DLL ORDERING GOTCHA (verified empirically, not theoretical):
 # importing paddleocr/paddlepaddle BEFORE torch in the same process corrupts
 # torch's native DLL loading (`OSError: ... torch\lib\shm.dll ...`). Both

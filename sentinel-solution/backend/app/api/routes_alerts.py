@@ -25,6 +25,7 @@ def _serialize(a: Alert) -> dict:
         "plate": a.plate,
         "camera_id": a.camera_id,
         "reason": a.reason,
+        "alert_type": a.alert_type or "watchlist",
         # created_at has a Python default so ORM-created alerts always have
         # it; guard anyway so a legacy/raw-inserted row with a NULL timestamp
         # can't crash the whole alerts list.

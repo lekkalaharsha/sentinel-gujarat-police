@@ -59,6 +59,31 @@ def get_principal(
     return Principal(entry.user_id, entry.role, entry.department)
 
 
+def department_scope(principal: Principal) -> Optional[str]:
+    """Model 1 explicitly lists 'department-wise RBAC' as required, not a
+    bonus (see this module's docstring) — previously only role (viewer/
+    investigator/admin) was enforced, not department. `admin` and any key
+    with no department set (department=None, e.g. the bootstrap key) are
+    unrestricted — `None` return means "no department filter", not "no
+    access". A non-admin key WITH a department only sees that department's
+    cameras (see routes_cameras.py's `_registered_cameras`).
+
+    Deliberately scoped to the CAMERA REGISTRY (Model 1) only, not vehicle
+    movement history (Model 2) — cross-camera correlation across
+    departments is this project's core differentiator (STRATEGY.md), and
+    restricting an investigator's plate search to their own department's
+    cameras would defeat exactly the feature that makes cross-department
+    vehicle tracking possible in the first place. Department-scoping the
+    registry (which cameras you can see/manage) is the deliverable Model 1
+    actually asks for; department-scoping investigative search results is a
+    different, NOT requested, restriction this project deliberately does
+    not add.
+    """
+    if principal.role == "admin":
+        return None
+    return principal.department
+
+
 def require_role(minimum_role: str):
     """Usage: `principal: Principal = Depends(require_role("admin"))`.
     Roles are ranked (viewer < investigator < admin) so `require_role
@@ -82,7 +107,13 @@ def ensure_default_admin_key(session: Session) -> None:
     raw_key = secrets.token_urlsafe(24)
     session.add(ApiKeyEntry(key_hash=hash_key(raw_key), user_id="bootstrap-admin", role="admin"))
     session.commit()
-    logger.warning(
-        "No API keys existed — minted a bootstrap admin key (SAVE THIS, shown only once): %s",
-        raw_key,
+    # Deliberately NOT logger.warning(...): the logging framework is a
+    # permanent record (any log aggregation/shipping keeps it forever),
+    # but this key is only ever meant to be visible once, at mint time —
+    # same one-shot-visibility intent as POST /auth/api-keys' response.
+    # Bypass logging and write straight to the console. Found by security
+    # review 2026-09-04.
+    print(
+        f"No API keys existed — minted a bootstrap admin key (SAVE THIS, shown only once): {raw_key}",
+        flush=True,
     )

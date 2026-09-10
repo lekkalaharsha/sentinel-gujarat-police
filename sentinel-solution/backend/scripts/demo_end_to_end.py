@@ -20,11 +20,13 @@ Run (from backend/, in the .venv with requirements-ml.txt installed):
 Verify mode uses its own throwaway SQLite DB so it never touches a real one.
 PERSIST mode writes to the app's real DB (DATABASE_URL, default sentinel.db)
 and does NOT delete it — so you can then start the API + frontend and record
-a demo exploring the populated results (map, timeline, alert). In PERSIST
-mode the sightings' `observed_at` is set to a realistic simulated timeline
-(see ROUTE `t_min`) so the geo-temporal route reconstruction reads as a
-credible journey rather than a 5-camera dash in the few seconds the script
-actually took to run.
+a demo exploring the populated results (map, timeline, alert). In both
+modes, `observed_at` is driven by an injected clock following ROUTE's
+`t_min` timeline (not real wall-clock time) — the pipeline runs the whole
+route in a couple of seconds of actual wall-clock time, and identity resolution's geo-feasibility gate
+(see identity.py) needs a credible elapsed time between cameras kilometres
+apart, or it correctly refuses to link them, same as it would for two
+genuinely unrelated vehicles.
 """
 from __future__ import annotations
 
@@ -134,16 +136,54 @@ def main() -> int:
     session = SessionLocal()
 
     # 1. Onboard the route's cameras with department + GIS (Model 1).
+    # Upsert, not blind insert: caught by real testing — running this
+    # against a DB where these camera IDs are ALREADY registered (e.g. real
+    # sandbox onboarding via onboard_from_catalogue.py, which owns cam01-05
+    # too) hit a UNIQUE constraint violation on a naive `session.add(new
+    # row)`. Same get-or-create pattern as routes_cameras.py's onboard_camera.
     for cam_id, dept, loc, lat, lon, _, _ in ROUTE:
-        session.add(CameraRegistry(id=cam_id, department=dept, location_name=loc, latitude=lat, longitude=lon))
-    # 2. Put the designated vehicle on the watchlist (stolen).
+        existing = session.get(CameraRegistry, cam_id)
+        if existing is None:
+            existing = CameraRegistry(id=cam_id)
+            session.add(existing)
+        existing.department = dept
+        existing.location_name = loc
+        existing.latitude = lat
+        existing.longitude = lon
+    # 2. Put the designated vehicle on the watchlist (stolen), unless a
+    # prior run already did — watchlist_service.add() always inserts, and
+    # WatchlistEntry.plate is unique, so re-running this script (a normal
+    # thing to do while iterating on the demo) would otherwise crash here.
     watchlist_service.load(session)
-    watchlist_service.add(session, DESIGNATED_PLATE, "stolen")
+    if watchlist_service.check(DESIGNATED_PLATE) is None:
+        watchlist_service.add(session, DESIGNATED_PLATE, "stolen")
     session.commit()
 
     print("Loading real models (YOLOv8 + PaddleOCR)...")
     detector = YoloVehicleDetector(weights="yolov8n.pt")
     plate_reader = PaddleOcrPlateReader()
+
+    # Real identity resolution now includes a geo-feasibility gate (see
+    # identity.py): an appearance-only match across cameras with a real
+    # physical distance is rejected if the elapsed time between sightings
+    # doesn't allow it. This script runs the whole 5-camera route in a
+    # couple of seconds of actual wall-clock time, so identity resolution
+    # would see near-zero elapsed time between cameras kilometres apart and
+    # correctly refuse to link them — the fix working exactly as intended,
+    # just not what this simulation wants. So `observed_at` is driven by an
+    # injected clock reflecting the ROUTE's simulated t_min timeline, not
+    # real wall-clock time — this is the pipeline's clock injection seam
+    # (AnalyticsPipeline(clock=...)), not a special case in identity.py.
+    # Relative to "now" (NOT a hardcoded calendar date) — a hardcoded future
+    # date was caught by real testing to break rank_candidate_cameras
+    # (geo.py), which computes elapsed time since the last sighting: a
+    # future timestamp produces a negative elapsed time and nonsense
+    # "required speed" figures. 90 minutes back means the whole ~78-minute
+    # simulated journey lands in the past, with the last stop a few minutes
+    # ago — a "just happened" demo, immune to whatever day this runs on.
+    base_time = dt.datetime.utcnow() - dt.timedelta(minutes=90)
+    _sim_clock_state = {"now": base_time}
+
     # One detector per camera (ByteTrack's persistent state must not be shared
     # across cameras — see pipeline.py). Both model families are already
     # imported here, so building more YOLO instances after PaddleOCR is safe
@@ -151,26 +191,18 @@ def main() -> int:
     pipeline = AnalyticsPipeline(
         detector_factory=lambda: YoloVehicleDetector(weights="yolov8n.pt"),
         plate_reader=plate_reader,
+        clock=lambda: _sim_clock_state["now"],
     )
 
     base_img = _load_vehicle_image()
 
     print(f"\nSimulating '{DESIGNATED_PLATE}' traveling across {len(ROUTE)} cameras:")
     t0 = 0.0
-    for i, (cam_id, dept, loc, _, _, readable, _t_min) in enumerate(ROUTE):
+    for i, (cam_id, dept, loc, _, _, readable, t_min) in enumerate(ROUTE):
+        _sim_clock_state["now"] = base_time + dt.timedelta(minutes=t_min)
         frame_img = _frame_for_camera(base_img, detector, readable)
         _drive_camera(pipeline, cam_id, frame_img, t0 + i * 30_000)  # 30s of PTS between cameras
         print(f"  {cam_id} ({dept}, {loc}) — plate {'READABLE' if readable else 'unreadable'}")
-
-    # PERSIST mode: stamp a realistic observed_at timeline so geo route
-    # reconstruction reads as a credible journey (the script itself runs in
-    # seconds; without this every hop would look like an impossible dash).
-    if PERSIST:
-        t_min_by_cam = {cam_id: t_min for cam_id, *_rest, t_min in ROUTE}
-        base_time = dt.datetime(2026, 9, 7, 9, 0, 0)
-        for e in session.query(VehicleEvent).all():
-            e.observed_at = base_time + dt.timedelta(minutes=t_min_by_cam.get(e.camera_id, 0))
-        session.commit()
 
     # ---- Verify the evaluation outputs, the way a judge would ----
     print("\n=== VERIFYING EVALUATION OUTPUTS ===")
@@ -255,12 +287,12 @@ def main() -> int:
         try:
             os.unlink(_DB_PATH)
         except OSError:
-            pass  # throwaway temp file; not worth failing the run over
+            pass
 
-    print("\n" + ("=== ALL EVALUATION OUTPUTS VERIFIED — DEMO WORKS END-TO-END ==="
-                  if ok else "=== SOME CHECKS FAILED — see above ==="))
+    if ok:
+        print("\n=== ALL EVALUATION OUTPUTS VERIFIED — DEMO WORKS END-TO-END ===")
     return 0 if ok else 1
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())

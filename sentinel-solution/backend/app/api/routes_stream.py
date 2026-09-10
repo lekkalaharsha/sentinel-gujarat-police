@@ -16,6 +16,7 @@ a password-gated feed playable in a browser at all.
 from __future__ import annotations
 
 import logging
+import re
 from urllib.parse import urljoin, urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -43,7 +44,20 @@ def hls_playlist(camera_id: str, _principal: Principal = Depends(require_role("v
     rewritten_lines = []
     for line in resp.text.splitlines():
         stripped = line.strip()
-        if stripped and not stripped.startswith("#") and "://" not in stripped:
+        if stripped.startswith("#EXT-X-KEY") and "URI=" in stripped:
+            # AES-128 encrypted streams reference a key file via a quoted
+            # URI attribute (often host-relative, e.g. URI="/enc.key") —
+            # that's a tag line so the segment-rewrite branch below never
+            # touches it, and left as-is the browser resolves it against
+            # OUR origin (not the CDN), 404ing and blocking all playback.
+            # Route it through the same authenticated segment proxy.
+            def _rewrite_key_uri(match: "re.Match[str]") -> str:
+                absolute = urljoin(cam.hls_url, match.group(1))
+                return f'URI="/live/{camera_id}/seg?u={absolute}"'
+
+            line = re.sub(r'URI="([^"]+)"', _rewrite_key_uri, line)
+            rewritten_lines.append(line)
+        elif stripped and not stripped.startswith("#") and "://" not in stripped:
             # Relative segment/sub-playlist reference — route it back through
             # our proxy, resolved against the original playlist URL so
             # nested relative paths (subdirectories) still work.

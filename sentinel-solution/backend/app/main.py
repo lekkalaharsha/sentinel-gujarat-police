@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import os
 import threading
 import time
 
@@ -12,6 +13,7 @@ from . import config
 from .analytics.anpr import PaddleOcrPlateReader, StubPlateReader
 from .analytics.detector import StubVehicleDetector, YoloVehicleDetector
 from .analytics.pipeline import AnalyticsPipeline
+from .analytics.plate_detector import StubPlateDetector, YoloPlateDetector
 from .api import (
     routes_admin,
     routes_alerts,
@@ -34,7 +36,7 @@ logger = logging.getLogger("sentinel.main")
 
 app = FastAPI(title="Sentinel — Unified CCTV Viewing & Analytics (Model 1 + 2)")
 app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
+    CORSMiddleware, allow_origins=config.CORS_ALLOWED_ORIGINS, allow_methods=["*"], allow_headers=["*"]
 )
 
 app.include_router(routes_auth.router)
@@ -59,6 +61,28 @@ def _build_detector():
             exc,
         )
         return StubVehicleDetector()
+
+
+def _build_plate_detector():
+    """Real trained plate localizer if the (separately downloaded) ONNX
+    weights are present — see config.PLATE_DETECTOR_WEIGHTS. Falls back to
+    StubPlateDetector's heuristic crop otherwise, loudly, same honest-
+    fallback pattern as the detector/OCR builders above."""
+    if not os.path.exists(config.PLATE_DETECTOR_WEIGHTS):
+        logger.warning(
+            "Plate localizer weights not found at %s — falling back to StubPlateDetector's "
+            "heuristic crop (see config.PLATE_DETECTOR_WEIGHTS for the download command).",
+            config.PLATE_DETECTOR_WEIGHTS,
+        )
+        return StubPlateDetector()
+    try:
+        return YoloPlateDetector(weights=config.PLATE_DETECTOR_WEIGHTS)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Plate localizer unavailable (%s) — falling back to StubPlateDetector's heuristic crop.",
+            exc,
+        )
+        return StubPlateDetector()
 
 
 def _build_plate_reader():
@@ -95,7 +119,9 @@ _build_detector()
 _plate_reader = _build_plate_reader()
 
 
-pipeline = AnalyticsPipeline(detector_factory=_build_detector, plate_reader=_plate_reader)
+pipeline = AnalyticsPipeline(
+    detector_factory=_build_detector, plate_reader=_plate_reader, plate_detector=_build_plate_detector()
+)
 stream_manager = StreamManager(catalogue, on_frame=pipeline.process)
 
 

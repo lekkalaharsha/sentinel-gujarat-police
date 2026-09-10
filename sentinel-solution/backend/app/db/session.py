@@ -27,6 +27,16 @@ _ADDITIVE_MIGRATIONS = [
     ("alert", "status", "VARCHAR DEFAULT 'new' NOT NULL"),
     ("alert", "status_updated_by", "VARCHAR"),
     ("alert", "status_updated_at", "DATETIME"),
+    ("vehicle_event", "crop_path", "VARCHAR"),
+    ("vehicle_event", "bbox_x1", "FLOAT"),
+    ("vehicle_event", "bbox_y1", "FLOAT"),
+    ("vehicle_event", "bbox_x2", "FLOAT"),
+    ("vehicle_event", "bbox_y2", "FLOAT"),
+    ("vehicle_identity", "last_camera_id", "VARCHAR"),
+    ("camera_registry", "camera_type", "VARCHAR"),
+    ("camera_registry", "is_restricted_zone", "BOOLEAN DEFAULT 0 NOT NULL"),
+    ("camera_registry", "expected_direction_deg", "FLOAT"),
+    ("alert", "alert_type", "VARCHAR DEFAULT 'watchlist' NOT NULL"),
 ]
 
 
@@ -88,9 +98,37 @@ def _ensure_vehicle_identity_plate_unique(existing_tables: set) -> None:
         ))
 
 
+def _check_models_match_db() -> None:
+    """Every new model column needs a matching entry in
+    `_ADDITIVE_MIGRATIONS`, and nothing enforced that until now — a missed
+    entry only surfaced as a runtime "no such column" error against an
+    already-existing DB, potentially long after the column was added.
+    Found by software-engineering review 2026-09-04. Runs AFTER migrations
+    are applied, so this only fires on a genuine miss, not a column this
+    same startup just added. Loud (raises) rather than silent, since the
+    alternative is exactly the silent-landmine failure mode being fixed."""
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    missing = []
+    for table_name, table in Base.metadata.tables.items():
+        if table_name not in existing_tables:
+            continue  # create_all just built this table fresh, in full
+        db_columns = {c["name"] for c in inspector.get_columns(table_name)}
+        for column in table.columns:
+            if column.name not in db_columns:
+                missing.append(f"{table_name}.{column.name}")
+    if missing:
+        raise RuntimeError(
+            "Model/DB schema mismatch after migrations ran — these columns "
+            f"exist on the model but not in the database: {', '.join(missing)}. "
+            "Add a matching entry to _ADDITIVE_MIGRATIONS in db/session.py."
+        )
+
+
 def init_db() -> None:
     inspector = inspect(engine)
     existing_tables = set(inspector.get_table_names())
     Base.metadata.create_all(engine)
     _apply_additive_migrations()
     _ensure_vehicle_identity_plate_unique(existing_tables)
+    _check_models_match_db()

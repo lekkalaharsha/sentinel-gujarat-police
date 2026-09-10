@@ -12,7 +12,7 @@ from typing import Dict, Optional
 from sqlalchemy.orm import Session
 
 from ..analytics.anpr import normalize_plate
-from ..db.models import Alert, WatchlistEntry
+from ..db.models import ALERT_STATUS_NEW, Alert, WatchlistEntry
 
 logger = logging.getLogger("sentinel.watchlist")
 
@@ -46,6 +46,21 @@ class WatchlistService:
     ) -> Optional[Alert]:
         reason = self.check(plate)
         if reason is None:
+            return None
+        # A vehicle lingering in one camera's view is processed as several
+        # short tracks/sightings (temporal fusion finalizes on any gap, see
+        # tracker.py), each independently re-matching the watchlist — without
+        # this check, one real loitering event became a dozen duplicate "new"
+        # alerts for the same plate at the same camera. One open alert per
+        # (plate, camera) is enough; a genuinely new visit after the last one
+        # was acknowledged/resolved/dismissed still raises its own alert.
+        existing_open = (
+            session.query(Alert)
+            .filter_by(plate=normalize_plate(plate), camera_id=camera_id)
+            .filter(Alert.status == ALERT_STATUS_NEW)
+            .first()
+        )
+        if existing_open is not None:
             return None
         alert = Alert(
             plate=normalize_plate(plate),

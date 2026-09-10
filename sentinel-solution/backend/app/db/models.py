@@ -37,6 +37,15 @@ class VehicleIdentity(Base):
     embedding_json = Column(String, nullable=True)  # latest appearance embedding, as JSON floats
     first_seen_at = Column(DateTime, default=dt.datetime.utcnow)
     last_seen_at = Column(DateTime, default=dt.datetime.utcnow)
+    # Which camera produced the most recent sighting — needed by
+    # identity.py's geo-feasibility gate on appearance-only matches. Real
+    # bug found by running the pipeline against continuous live sandbox
+    # traffic (not synthetic data): without this, an identity drifted
+    # across ~100 unrelated real vehicles across the state within 15
+    # minutes, purely on colour-histogram similarity, because nothing
+    # checked whether the candidate's last-known camera was even
+    # physically reachable from the new sighting's camera.
+    last_camera_id = Column(String, nullable=True)
 
     def set_embedding(self, embedding) -> None:
         self.embedding_json = json.dumps([round(float(x), 5) for x in embedding])
@@ -62,6 +71,12 @@ class CameraRegistry(Base):
     longitude = Column(Float, nullable=True)
     vendor = Column(String, nullable=True)
     codec = Column(String, nullable=True)
+    # PTZ / dome / fixed / bullet — Model 1's GIS map has no camera-type layer
+    # without this (found in MODULE_GAP_ANALYSIS.md 2026-09-05). Free text,
+    # not an enum: the catalogue/onboarding source doesn't constrain values
+    # and rejecting an unrecognized vendor's own classification would be
+    # worse than storing it as-is.
+    camera_type = Column(String, nullable=True)
     onboarded_at = Column(DateTime, default=dt.datetime.utcnow)
     last_seen_live_at = Column(DateTime, nullable=True)
     # No default: a freshly-onboarded camera hasn't been confirmed live yet,
@@ -69,6 +84,18 @@ class CameraRegistry(Base):
     # health status we have no evidence for. Only main.py's health-sync loop
     # (backed by the real RTSP worker's connection state) ever sets this.
     is_healthy = Column(Boolean, nullable=True, default=None)
+
+    # Named-anomaly-alert config (see analytics/anomaly.py). Both opt-in,
+    # per-camera, set at onboarding time — a camera with neither set never
+    # produces anomaly alerts, only watchlist ones, same as before this
+    # feature existed.
+    is_restricted_zone = Column(Boolean, nullable=False, default=False)
+    # Image-plane direction (0=right, 90=down, 180=left, 270=up, same
+    # convention as VehicleEvent.direction_deg) that a vehicle moving WITH
+    # traffic flow at this camera should point — NOT a compass bearing, see
+    # VehicleEvent.direction_deg's docstring for why. Null = wrong-way
+    # detection disabled for this camera (no ground truth to compare against).
+    expected_direction_deg = Column(Float, nullable=True)
 
 
 class VehicleEvent(Base):
@@ -125,6 +152,17 @@ class VehicleEvent(Base):
     # "new_identity" | "plate_continuation" | "plate_upgrade" | "appearance_match"
     link_score = Column(Float, nullable=True)  # cosine similarity, only set for appearance_match
     link_time_gap_s = Column(Float, nullable=True)  # seconds since the identity's previous sighting
+
+    # Evidence: the highest-confidence detection crop for this sighting,
+    # saved to disk at finalize time (see pipeline.py), plus the bbox it was
+    # taken from (image-plane pixel coords, NOT geo coords) so a UI can draw
+    # the detection box over the crop. Nullable: older rows predate this
+    # column and simply have no stored evidence image.
+    crop_path = Column(String, nullable=True)
+    bbox_x1 = Column(Float, nullable=True)
+    bbox_y1 = Column(Float, nullable=True)
+    bbox_x2 = Column(Float, nullable=True)
+    bbox_y2 = Column(Float, nullable=True)
 
     camera = relationship("CameraRegistry")
     identity = relationship("VehicleIdentity")
@@ -215,9 +253,21 @@ class Alert(Base):
     __tablename__ = "alert"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    # NOT NULL by original design (watchlist alerts always have a matched
+    # plate). Named-anomaly alerts (see analytics/anomaly.py) can fire on a
+    # vehicle whose plate was never read at this camera — per this
+    # project's "ANPR failure must not mean tracking failure" principle,
+    # the vehicle is still a specific, trackable identity, so we surface it
+    # as "UNREAD#<identity_id>" rather than requiring a plate the anomaly
+    # logic has no way to guarantee.
     plate = Column(String, index=True, nullable=False)
     camera_id = Column(String, ForeignKey("camera_registry.id"), nullable=False)
     reason = Column(String, nullable=False)
+    # "watchlist" (original, default — legacy rows predate this column) |
+    # "wrong_way" | "stopped_restricted_zone". Lets the UI badge/filter
+    # anomaly alerts separately from watchlist hits without overloading
+    # `reason`'s free-text meaning.
+    alert_type = Column(String, nullable=False, default="watchlist")
     vehicle_event_id = Column(Integer, ForeignKey("vehicle_event.id"), nullable=False)
     created_at = Column(DateTime, default=dt.datetime.utcnow)
     acknowledged = Column(Boolean, default=False)

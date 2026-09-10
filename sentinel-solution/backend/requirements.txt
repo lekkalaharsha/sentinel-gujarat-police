@@ -5,6 +5,10 @@ requests==2.32.3
 opencv-python==4.10.0.84
 pydantic==2.9.2
 
+# Regression test suite (backend/tests/ — SWE-4). Self-contained, no camera
+# access or ML deps needed. Run from backend/: `python -m pytest tests -v`.
+pytest==9.1.1
+
 # Real analytics deps — see requirements-ml.txt. main.py tries to construct
 # YoloVehicleDetector/PaddleOcrPlateReader at startup and falls back to the
 # honest no-op stubs (with a loud warning) if these aren't installed, so the

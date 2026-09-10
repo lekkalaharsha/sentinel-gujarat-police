@@ -1,17 +1,45 @@
 from __future__ import annotations
 
+import csv
 import datetime as dt
+import io
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from .. import config
 from ..catalogue import catalogue
-from ..db.models import CameraRegistry
-from .auth import Principal, require_role
+from ..db.models import CameraRegistry, VehicleEvent
+from .auth import Principal, department_scope, require_role
 from .deps import get_db
 
 router = APIRouter(prefix="/cameras", tags=["cameras"])
+
+
+def _registered_cameras(db: Session, principal: Principal | None = None) -> list[CameraRegistry]:
+    """Same recording-only scope as catalogue.py's filter (see config.py's
+    DEMO_CAMERA_SCOPE) — applied here too so a scoped recording doesn't show
+    the rest of this environment's real onboarded cameras as "offline"
+    decoys alongside the demo's actual 5. No-op when unset.
+
+    Also applies department-scoped RBAC (see auth.py's `department_scope`):
+    a non-admin key tied to a department only sees THAT department's
+    registered cameras — cameras with no department set yet (unregistered/
+    ungap-analyzed) are excluded from a department-scoped view, since
+    showing "unknown department" cameras to every department's
+    investigators would leak the existence of other departments'
+    unclaimed cameras. `principal=None` (internal callers, e.g. the health-
+    sync loop) means unrestricted, same as an admin principal."""
+    query = db.query(CameraRegistry)
+    if config.DEMO_CAMERA_SCOPE is not None:
+        query = query.filter(CameraRegistry.id.in_(config.DEMO_CAMERA_SCOPE))
+    if principal is not None:
+        dept = department_scope(principal)
+        if dept is not None:
+            query = query.filter(CameraRegistry.department == dept)
+    return query.all()
 
 # Camera health is considered stale (and reported unhealthy) if no frame has
 # arrived in this long, even if the worker's socket still looks "connected"
@@ -19,53 +47,96 @@ router = APIRouter(prefix="/cameras", tags=["cameras"])
 HEALTH_STALE_S = 90.0
 
 
-def _merged_camera_view(session: Session, cam_id: str, live_info) -> dict:
+def _merged_camera_view(cam_id: str, registry, live_info, include_raw_urls: bool = False) -> dict:
     """Model 1's registry is metadata-first (see HACKATHON_DETAILS.md §7):
     a camera can be "registered" (in CameraRegistry, with department/GIS
     metadata) independently of whether it's currently live in the
     catalogue. Earlier versions of this endpoint only read the live
     catalogue and silently dropped department/lat/lon/health — merging both
-    sources here is the actual fix for that."""
-    registry = session.get(CameraRegistry, cam_id)
+    sources here is the actual fix for that.
+
+    Takes an already-fetched `registry` row rather than fetching it itself:
+    `list_cameras` used to call this once per camera, each doing its own
+    `session.get()` — an N+1 that's harmless at 30 cameras but directly
+    undercuts the 80k-camera scalability story. Batch-fetching once in the
+    caller and passing the row in fixes both that AND a redundant second
+    fetch `get_camera` was doing (fetch once, then call this, which fetched
+    again). Found by software-engineering review 2026-09-04.
+
+    `include_raw_urls` gates `rtsp_url`/`whep_url`: both embed the real
+    sandbox login (`email:password@`, see catalogue.py) directly in the
+    URL. The frontend never reads either field — it plays video through
+    the authenticated HLS proxy (routes_stream.py) via `hls_url` only — so
+    a `viewer`-role key has no legitimate need for them. Found by security
+    review 2026-09-04: any viewer key could extract the actual government
+    sandbox credentials through this endpoint. Restricted to admin."""
     return {
         "id": cam_id,
         "location": (live_info.location if live_info else None) or (registry.location_name if registry else None),
         "codec": live_info.codec if live_info else None,
         "live": bool(live_info),
-        "rtsp_url": live_info.rtsp_url if live_info else None,
-        "whep_url": live_info.whep_url if live_info else None,
+        "rtsp_url": (live_info.rtsp_url if live_info else None) if include_raw_urls else None,
+        "whep_url": (live_info.whep_url if live_info else None) if include_raw_urls else None,
         "hls_url": live_info.hls_url if live_info else None,
         "department": registry.department if registry else None,
         "vendor": registry.vendor if registry else None,
+        "camera_type": registry.camera_type if registry else None,
         "latitude": registry.latitude if registry else None,
         "longitude": registry.longitude if registry else None,
         "is_healthy": registry.is_healthy if registry else None,
         "last_seen_live_at": registry.last_seen_live_at.isoformat() if registry and registry.last_seen_live_at else None,
+        "is_restricted_zone": registry.is_restricted_zone if registry else False,
+        "expected_direction_deg": registry.expected_direction_deg if registry else None,
         "onboarded": registry is not None,
     }
 
 
 @router.get("")
-def list_cameras(db: Session = Depends(get_db), _principal: Principal = Depends(require_role("viewer"))):
+def list_cameras(db: Session = Depends(get_db), principal: Principal = Depends(require_role("viewer"))):
     """Model 1 view: union of the live catalogue AND the onboarded registry
     — a camera that's registered but currently offline (a real gap-analysis
-    case) still shows up, just with live=false."""
+    case) still shows up, just with live=false.
+
+    Department-scoped (see auth.py's `department_scope`): a non-admin key
+    tied to a department only sees that department's registered cameras.
+    Live-but-not-yet-onboarded cameras (department unknown) are excluded
+    from a department-scoped view entirely — they carry no department
+    attribution to scope by, and showing them would leak the existence of
+    other departments' unclaimed cameras to every department equally.
+    That global "what's live but unregistered" view stays available via
+    gap-analysis, which is investigator+ AND still department-scoped the
+    same way."""
     live = catalogue.cameras
-    registered = db.query(CameraRegistry).all()
-    all_ids = set(live.keys()) | {r.id for r in registered}
-    return [_merged_camera_view(db, cam_id, live.get(cam_id)) for cam_id in sorted(all_ids)]
+    registered = _registered_cameras(db, principal)
+    registry_by_id = {r.id: r for r in registered}
+    dept = department_scope(principal)
+    all_ids = set(registry_by_id.keys()) if dept is not None else (set(live.keys()) | set(registry_by_id.keys()))
+    include_raw_urls = principal.role == "admin"
+    return [
+        _merged_camera_view(cam_id, registry_by_id.get(cam_id), live.get(cam_id), include_raw_urls)
+        for cam_id in sorted(all_ids)
+    ]
 
 
 @router.get("/gap-analysis")
-def gap_analysis(db: Session = Depends(get_db), _principal: Principal = Depends(require_role("investigator"))):
+def gap_analysis(db: Session = Depends(get_db), principal: Principal = Depends(require_role("investigator"))):
     """Model 1 explicitly requires a 'gap-analysis report' deliverable:
     which cameras are known but not onboarded with metadata, which are
     onboarded but not currently live, and department coverage — the
-    concrete gaps a real rollout would need to close next."""
-    live = catalogue.cameras
-    registered = {r.id: r for r in db.query(CameraRegistry).all()}
+    concrete gaps a real rollout would need to close next.
 
-    live_not_onboarded = sorted(set(live) - set(registered))
+    Department-scoped like list_cameras above: a non-admin key tied to a
+    department sees only that department's registered/missing/unhealthy
+    counts, not the whole state's."""
+    dept = department_scope(principal)
+    live = catalogue.cameras  # full catalogue — needed to correctly tell whether THIS department's own cameras are live
+    registered = {r.id: r for r in _registered_cameras(db, principal)}
+
+    # "live but not onboarded ANYWHERE" is a global, cross-department fact
+    # (we don't know which department an unregistered live camera belongs
+    # to) — hide it for a department-scoped principal rather than leak
+    # other departments' unclaimed cameras; still fully visible to admin.
+    live_not_onboarded = [] if dept is not None else sorted(set(live) - set(registered))
     onboarded_not_live = sorted(set(registered) - set(live))
     missing_department = sorted(cid for cid, r in registered.items() if not r.department)
     missing_gis = sorted(cid for cid, r in registered.items() if r.latitude is None or r.longitude is None)
@@ -95,6 +166,20 @@ class CameraOnboard(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     vendor: str | None = None
+    camera_type: str | None = None  # PTZ / dome / fixed / bullet, free text
+    is_restricted_zone: bool = False
+    expected_direction_deg: float | None = None
+
+
+def _apply_onboard_fields(existing: CameraRegistry, body: CameraOnboard) -> None:
+    existing.department = body.department
+    existing.location_name = body.location_name
+    existing.latitude = body.latitude
+    existing.longitude = body.longitude
+    existing.vendor = body.vendor
+    existing.camera_type = body.camera_type
+    existing.is_restricted_zone = body.is_restricted_zone
+    existing.expected_direction_deg = body.expected_direction_deg
 
 
 @router.post("")
@@ -111,11 +196,7 @@ def onboard_camera(
     if existing is None:
         existing = CameraRegistry(id=body.id)
         db.add(existing)
-    existing.department = body.department
-    existing.location_name = body.location_name
-    existing.latitude = body.latitude
-    existing.longitude = body.longitude
-    existing.vendor = body.vendor
+    _apply_onboard_fields(existing, body)
     db.commit()
     return {"status": "onboarded", "id": body.id}
 
@@ -134,20 +215,98 @@ def onboard_cameras_bulk(
         if existing is None:
             existing = CameraRegistry(id=body.id)
             db.add(existing)
-        existing.department = body.department
-        existing.location_name = body.location_name
-        existing.latitude = body.latitude
-        existing.longitude = body.longitude
-        existing.vendor = body.vendor
+        _apply_onboard_fields(existing, body)
         ids.append(body.id)
     db.commit()
     return {"status": "onboarded", "count": len(ids), "ids": ids}
 
 
+@router.get("/export.csv")
+def export_cameras_csv(
+    db: Session = Depends(get_db), principal: Principal = Depends(require_role("investigator"))
+):
+    """Model 1's registry export deliverable (found missing entirely in
+    MODULE_GAP_ANALYSIS.md 2026-09-05). Registry metadata only — never
+    includes rtsp_url/whep_url (see _merged_camera_view's docstring on why
+    those are admin-only in the JSON view too; a CSV export is an even
+    easier way to leak the sandbox's embedded credentials if this were
+    careless about it). Department-scoped the same way as list_cameras."""
+    dept = department_scope(principal)
+    live = catalogue.cameras
+    registered = _registered_cameras(db, principal)
+    registry_by_id = {r.id: r for r in registered}
+    all_ids = sorted(set(registry_by_id.keys()) if dept is not None else (set(live.keys()) | set(registry_by_id.keys())))
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "id", "location", "department", "vendor", "camera_type", "latitude", "longitude",
+        "is_healthy", "last_seen_live_at", "is_restricted_zone", "expected_direction_deg",
+        "onboarded", "live",
+    ])
+    for cam_id in all_ids:
+        registry = registry_by_id.get(cam_id)
+        live_info = live.get(cam_id)
+        row = _merged_camera_view(cam_id, registry, live_info, include_raw_urls=False)
+        writer.writerow([
+            row["id"], row["location"], row["department"], row["vendor"], row["camera_type"],
+            row["latitude"], row["longitude"], row["is_healthy"], row["last_seen_live_at"],
+            row["is_restricted_zone"], row["expected_direction_deg"], row["onboarded"], row["live"],
+        ])
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=sentinel_camera_registry.csv"},
+    )
+
+
 @router.get("/{camera_id}")
-def get_camera(camera_id: str, db: Session = Depends(get_db), _principal: Principal = Depends(require_role("viewer"))):
+def get_camera(camera_id: str, db: Session = Depends(get_db), principal: Principal = Depends(require_role("viewer"))):
     live_info = catalogue.get(camera_id)
     registry = db.get(CameraRegistry, camera_id)
+    dept = department_scope(principal)
+    if dept is not None and (registry is None or registry.department != dept):
+        # Same 404 message/shape as "doesn't exist" — a department-scoped
+        # principal shouldn't be able to distinguish "this camera exists
+        # but isn't mine" from "this camera doesn't exist" (see
+        # department_scope's docstring for why this is scoped to the
+        # registry, not vehicle search).
+        raise HTTPException(status_code=404, detail=f"camera {camera_id} not found")
     if live_info is None and registry is None:
-        return {"error": "not found"}
-    return _merged_camera_view(db, camera_id, live_info)
+        raise HTTPException(status_code=404, detail=f"camera {camera_id} not found")
+    return _merged_camera_view(camera_id, registry, live_info, include_raw_urls=principal.role == "admin")
+
+
+@router.get("/{camera_id}/last-detection")
+def last_detection(camera_id: str, db: Session = Depends(get_db), _principal: Principal = Depends(require_role("viewer"))):
+    """Most recent real detection at this camera. Not a live video overlay —
+    the pipeline processes sampled frames server-side, it doesn't composite
+    boxes back onto the HLS stream — but it IS the real bbox/plate/attributes
+    from the latest processed frame, meant to be polled and shown alongside
+    the live player as a periodically-refreshed "last seen" panel."""
+    event = (
+        db.query(VehicleEvent)
+        .filter(VehicleEvent.camera_id == camera_id)
+        .order_by(VehicleEvent.observed_at.desc())
+        .first()
+    )
+    if event is None:
+        return {"camera_id": camera_id, "detection": None}
+    return {
+        "camera_id": camera_id,
+        "detection": {
+            "event_id": event.id,
+            "observed_at": event.observed_at.isoformat(),
+            "plate": event.plate,
+            "plate_confidence": event.plate_confidence,
+            "vehicle_type": event.vehicle_type,
+            "color": event.color,
+            "confidence": event.confidence,
+            "has_evidence_image": event.crop_path is not None,
+            "bbox": (
+                {"x1": event.bbox_x1, "y1": event.bbox_y1, "x2": event.bbox_x2, "y2": event.bbox_y2}
+                if event.bbox_x1 is not None else None
+            ),
+        },
+    }

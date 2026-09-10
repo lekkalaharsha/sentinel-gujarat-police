@@ -1,21 +1,89 @@
 """Implements the evaluation's core ask: given a plate, return the complete
 timestamped, location-wise movement history across the camera network.
 
-Every lookup is purpose-bound and logged (DPDP-oriented governance): the
-caller must state who they are and why they're querying, not just what.
+Every TARGETED per-plate/attribute lookup below is purpose-bound and
+logged (DPDP-oriented governance): the caller must state who they are and
+why they're querying, not just what. `GET /recent` is the one deliberate
+exception — a continuous "what's happening right now" operational feed,
+not a targeted investigation query, so it's neither purpose-bound nor
+logged per call (see its own docstring). Corrected 2026-09-04: this
+module docstring previously claimed "every lookup," overclaiming relative
+to that intentional, already-documented exception.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+import os
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from .. import config
 from ..analytics.anpr import normalize_plate
-from ..analytics.geo import RoutePoint, build_inferred_segments
+from ..analytics.geo import RoutePoint, build_inferred_segments, rank_candidate_cameras
 from ..db.models import AuditLog, CameraRegistry, VehicleEvent, VehicleIdentity
+from ..watchlist.service import watchlist_service
 from .auth import Principal, require_role
 from .deps import get_db
 
 router = APIRouter(prefix="/vehicle", tags=["vehicle"])
+
+# The DPDP purpose-bound-query story needs the stated purpose to actually
+# say something — nothing previously stopped `purpose=""` or `purpose="x"`
+# from satisfying it. Found by security review 2026-09-04. Not a format/
+# enum check (a free-text justification is the honest choice — investigator
+# workflows vary too much for a fixed enum to cover), just a floor that
+# rejects the trivially-empty case.
+_PURPOSE_MIN_LENGTH = 8
+
+
+def _cameras_by_id(db: Session, camera_ids) -> dict:
+    """Batch-fetch cameras referenced by a set of events into one query,
+    instead of a `session.get()` per event. Harmless at the pilot's 30
+    cameras, but this endpoint is exactly the one SCALABILITY.md's
+    80k-camera story has to serve — at that scale, one query per row
+    instead of one `WHERE id IN (...)` is the difference between a bounded
+    query and N round-trips. Found by software-engineering review
+    2026-09-04; same pattern already used to fix identity.py's
+    `_best_match` this session."""
+    ids = {c for c in camera_ids if c}
+    if not ids:
+        return {}
+    return {c.id: c for c in db.query(CameraRegistry).filter(CameraRegistry.id.in_(ids)).all()}
+
+
+@router.get("/recent")
+def recent_detections(
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    _principal: Principal = Depends(require_role("investigator")),
+):
+    """Live operational feed — the command-center 'what's happening right
+    now' view, distinct from the purpose-bound individual lookups below
+    (vehicle_history/search_by_attributes). NOT purpose-bound or audit-logged
+    per call, same precedent as GET /alerts (routes_alerts.py): a continuous
+    monitoring view of recent state is a declared operational function, not
+    a targeted investigation query — the distinction that keeps
+    purpose-binding meaningful is per-plate lookup, not "is any recent-
+    activity view allowed to exist at all"."""
+    events = db.query(VehicleEvent).order_by(VehicleEvent.observed_at.desc()).limit(limit).all()
+    cameras = _cameras_by_id(db, (e.camera_id for e in events))
+    out = []
+    for e in events:
+        cam = cameras.get(e.camera_id)
+        out.append({
+            "event_id": e.id,
+            "camera_id": e.camera_id,
+            "location": cam.location_name if cam else None,
+            "observed_at": e.observed_at.isoformat(),
+            "plate": e.plate,
+            "plate_confidence": e.plate_confidence,
+            "vehicle_type": e.vehicle_type,
+            "color": e.color,
+            "has_evidence_image": e.crop_path is not None,
+            "watchlisted": bool(e.plate and watchlist_service.check(e.plate)),
+        })
+    return out
 
 # Temporal consistency decays from 1.0 (instant) to ~0 at this many seconds
 # since the identity's previous sighting — informs the fused score below but
@@ -57,7 +125,7 @@ def _explain_link(e: VehicleEvent) -> dict:
 @router.get("/{plate}/history")
 def vehicle_history(
     plate: str,
-    purpose: str,
+    purpose: str = Query(..., min_length=_PURPOSE_MIN_LENGTH),
     case_id: str | None = None,
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_role("investigator")),
@@ -89,10 +157,11 @@ def vehicle_history(
         .order_by(VehicleEvent.observed_at.asc())
         .all()
     )
+    cameras = _cameras_by_id(db, (e.camera_id for e in events))
     out = []
     route_points = []
     for e in events:
-        cam = db.get(CameraRegistry, e.camera_id)
+        cam = cameras.get(e.camera_id)
         out.append(
             {
                 # Geo-temporal event typing: a sighting is CONFIRMED camera
@@ -122,6 +191,15 @@ def vehicle_history(
                     "direction_deg": e.direction_deg,
                 },
                 "link": _explain_link(e),
+                # Evidence: real detection crop + bbox if the pipeline saved
+                # one (see analytics/pipeline.py); null on older rows or if
+                # the write failed. event_id lets the UI fetch the image.
+                "event_id": e.id,
+                "has_evidence_image": e.crop_path is not None,
+                "bbox": (
+                    {"x1": e.bbox_x1, "y1": e.bbox_y1, "x2": e.bbox_x2, "y2": e.bbox_y2}
+                    if e.bbox_x1 is not None else None
+                ),
             }
         )
         route_points.append(
@@ -152,9 +230,76 @@ def vehicle_history(
     }
 
 
+@router.get("/event/{event_id}/crop")
+def vehicle_event_crop(
+    event_id: int,
+    db: Session = Depends(get_db),
+    _principal: Principal = Depends(require_role("viewer")),
+):
+    """Serves the real evidence crop saved at detection time (see
+    analytics/pipeline.py). 404 if this event has none — either it predates
+    the crop feature, or the save failed; the UI should show a placeholder
+    rather than assume every sighting has an image."""
+    event = db.get(VehicleEvent, event_id)
+    if event is None or not event.crop_path:
+        raise HTTPException(status_code=404, detail="no evidence image for this event")
+    path = os.path.join(config.CROPS_DIR, event.crop_path)
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="evidence image file missing on disk")
+    return FileResponse(path, media_type="image/jpeg")
+
+
+@router.get("/{plate}/candidate-cameras")
+def vehicle_candidate_cameras(
+    plate: str,
+    purpose: str = Query(..., min_length=_PURPOSE_MIN_LENGTH),
+    case_id: str | None = None,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("investigator")),
+):
+    """Forward-looking geo-temporal feasibility: given this vehicle's most
+    recent CONFIRMED sighting, which OTHER cameras could it plausibly reach
+    by now? This is deterministic physics (haversine distance vs. elapsed
+    time vs. a plausible max speed — same math as geo.py's backward-looking
+    INFERRED segments, just run forward), NOT a learned/ML prediction of
+    where the vehicle actually went. Powers the Geo-Temporal Journey Engine's
+    "feasible next cameras" panel — labelled PREDICTED in the UI precisely
+    because it's a feasibility filter, not an observation. See geo.py.
+    """
+    plate = normalize_plate(plate)
+    db.add(AuditLog(user_id=principal.user_id, purpose=purpose, case_id=case_id, query=f"candidate-cameras:{plate}"))
+    db.commit()
+
+    identity = db.query(VehicleIdentity).filter(VehicleIdentity.plate == plate).first()
+    if identity is None:
+        return {"plate": plate, "candidates": [], "note": "no identity has been resolved to this plate yet"}
+
+    last_event = (
+        db.query(VehicleEvent)
+        .filter(VehicleEvent.identity_id == identity.id)
+        .order_by(VehicleEvent.observed_at.desc())
+        .first()
+    )
+    if last_event is None:
+        return {"plate": plate, "candidates": [], "note": "no sightings recorded for this identity"}
+
+    last_camera = db.get(CameraRegistry, last_event.camera_id)
+    all_cameras = db.query(CameraRegistry).all()
+    candidates = rank_candidate_cameras(last_camera, last_event.observed_at, all_cameras)
+
+    return {
+        "plate": plate,
+        "last_known_camera": last_event.camera_id,
+        "last_known_at": last_event.observed_at.isoformat(),
+        "candidates": candidates,
+        "method": "physics-based feasibility filter (haversine distance / elapsed time vs. "
+                  "a plausible max speed) — NOT a machine-learned prediction of actual route",
+    }
+
+
 @router.get("/search-by-attributes")
 def search_by_attributes(
-    purpose: str,
+    purpose: str = Query(..., min_length=_PURPOSE_MIN_LENGTH),
     vehicle_type: str | None = None,
     color: str | None = None,
     partial_plate: str | None = None,
@@ -178,9 +323,10 @@ def search_by_attributes(
         q = q.filter(VehicleEvent.plate.like(f"%{normalize_plate(partial_plate)}%"))
     events = q.order_by(VehicleEvent.observed_at.asc()).limit(200).all()
 
+    cameras = _cameras_by_id(db, (e.camera_id for e in events))
     out = []
     for e in events:
-        cam = db.get(CameraRegistry, e.camera_id)
+        cam = cameras.get(e.camera_id)
         out.append(
             {
                 "camera_id": e.camera_id,

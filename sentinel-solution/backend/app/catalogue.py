@@ -97,6 +97,23 @@ class CatalogueClient:
         self._email = email
         self._login_url = login_url
         self._session = requests.Session()
+        # The CDN gates the HLS playlist/segment endpoints (not /cameras.json
+        # or /auth/login) behind a User-Agent check — requests' default UA
+        # (`python-requests/x.x`) gets a 403 with a "browser required" text
+        # body. Found 2026-09-05 while diagnosing a live 502 in
+        # routes_stream.py (which surfaces any authenticated_get() failure
+        # as a clean 502 — that part was already correct; the actual
+        # upstream error was masked because `-o /dev/null` in an earlier
+        # curl check discarded the response body that would have shown
+        # "browser required" immediately). A real browser UA on the whole
+        # session (not just HLS calls) is the simplest fix and costs
+        # nothing on the endpoints that didn't need it.
+        self._session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+            )
+        })
         self._logged_in = False
         self._lock = threading.RLock()
         self._cameras: Dict[str, CameraInfo] = {}
@@ -156,6 +173,8 @@ class CatalogueClient:
         for entry in entries:
             try:
                 cam = CameraInfo.from_api(entry)
+                if config.DEMO_CAMERA_SCOPE is not None and cam.id not in config.DEMO_CAMERA_SCOPE:
+                    continue
                 cameras[cam.id] = cam
             except Exception as exc:  # noqa: BLE001
                 logger.warning("skipping malformed catalogue entry %s: %s", entry, exc)

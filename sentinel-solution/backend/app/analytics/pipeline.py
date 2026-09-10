@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import os
 from typing import Callable, Dict
 
 from .. import config
@@ -36,6 +37,7 @@ from ..db.models import CameraRegistry, VehicleEvent
 from ..db.session import SessionLocal
 from ..streaming.rtsp_client import Frame
 from ..watchlist.service import watchlist_service
+from .anomaly import raise_anomaly_alerts
 from .anpr import PlateReader
 from .attributes import MakeModelClassifier, StubMakeModelClassifier, extract_attributes
 from .detector import VehicleDetector
@@ -43,6 +45,7 @@ from .identity import identity_resolver
 from .plate_detector import PlateDetector, StubPlateDetector, crop_plate, enhance_plate_crop
 from .reid import EMBEDDING_DIM, ColorHistogramEncoder, ReIdEncoder
 
+import cv2
 import numpy as np
 from .tracker import CameraTracker, Track
 
@@ -57,6 +60,7 @@ class AnalyticsPipeline:
         make_model_classifier: MakeModelClassifier = StubMakeModelClassifier(),
         plate_detector: PlateDetector = StubPlateDetector(),
         reid_encoder: ReIdEncoder = ColorHistogramEncoder(),
+        clock: Callable[[], dt.datetime] = dt.datetime.utcnow,
     ):
         # One detector PER CAMERA, not shared: YoloVehicleDetector's
         # ByteTrack state (persist=True) is only meaningful for a single
@@ -68,6 +72,7 @@ class AnalyticsPipeline:
         self._make_model_classifier = make_model_classifier
         self._plate_detector = plate_detector
         self._reid_encoder = reid_encoder
+        self._clock = clock
         self._trackers: Dict[str, CameraTracker] = {}
 
     def process(self, frame: Frame) -> None:
@@ -168,12 +173,14 @@ class AnalyticsPipeline:
                     else np.zeros(EMBEDDING_DIM, dtype=np.float32)
                 )
 
+                observed_at = self._clock()
                 identity, link_info = identity_resolver.resolve(
                     session,
                     plate=plate,
                     plate_confidence=plate_confidence,
                     embedding=embedding,
-                    observed_at=dt.datetime.utcnow(),
+                    observed_at=observed_at,
+                    camera_id=camera_id,
                 )
 
                 event = VehicleEvent(
@@ -190,6 +197,19 @@ class AnalyticsPipeline:
                     plate=plate,
                     plate_confidence=plate_confidence,
                     camera_id=camera_id,
+                    # Explicit, not the column default — must be the SAME
+                    # value identity resolution just used above, or the
+                    # displayed/persisted timestamp silently diverges from
+                    # the timestamp the merge decision was actually made on.
+                    # Real bug, caught by actually looking at the rendered
+                    # UI, not just the resolver's own PASS/FAIL: the demo's
+                    # injected simulated clock made identity resolution
+                    # correct, but VehicleEvent still fell back to real
+                    # wall-clock time, so the Vehicle Intelligence timeline
+                    # showed sightings 1-2 seconds apart with "not a direct
+                    # drive" warnings, contradicting the correct merge that
+                    # had just happened.
+                    observed_at=observed_at,
                     pts_ms=track.last_pts_ms,
                     confidence=max(track.detection_confidences) if track.detection_confidences else None,
                     vehicle_type=attrs.vehicle_type if attrs else track.vehicle_type,
@@ -203,14 +223,39 @@ class AnalyticsPipeline:
                     dwell_time_s=dwell_time_s,
                     speed_px_per_s=speed_px_per_s,
                     direction_deg=direction_deg,
+                    bbox_x1=track.bbox[0], bbox_y1=track.bbox[1],
+                    bbox_x2=track.bbox[2], bbox_y2=track.bbox[3],
                 )
                 session.add(event)
                 session.commit()
 
+                event.crop_path = self._save_crop(event.id, track.best_crop)
+                session.commit()
+
                 if identity.plate:
                     watchlist_service.raise_alert_if_matched(session, identity.plate, camera_id, event.id)
+
+                camera_row = session.get(CameraRegistry, camera_id)
+                raise_anomaly_alerts(session, camera_row, event, identity)
         finally:
             session.close()
+
+    @staticmethod
+    def _save_crop(event_id: int, crop: "np.ndarray | None") -> "str | None":
+        """Best-effort: evidence is a nice-to-have, never worth crashing the
+        pipeline over. Returns the relative path stored on the event, or
+        None if there was nothing to save or the write failed."""
+        if crop is None or crop.size == 0:
+            return None
+        try:
+            os.makedirs(config.CROPS_DIR, exist_ok=True)
+            filename = f"{event_id}.jpg"
+            path = os.path.join(config.CROPS_DIR, filename)
+            ok = cv2.imwrite(path, crop)
+            return filename if ok else None
+        except Exception as exc:
+            logger.warning("failed to save evidence crop for event %s: %s", event_id, exc)
+            return None
 
     @staticmethod
     def _ensure_camera_registered(session, camera_id: str) -> None:
