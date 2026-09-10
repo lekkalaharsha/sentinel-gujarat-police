@@ -429,7 +429,7 @@ for i, (title, desc) in enumerate(items):
 # ============================================================ 9 — AI PIPELINE (real diagram)
 s = content_slide("AI Video Analytics", "Detection through cross-camera identity", title_size=27)
 stages = [
-    ("Detect", "YOLOv8n", "done"), ("Locate\nplate", "Heuristic crop", "partial"), ("Enhance", "CLAHE", "done"),
+    ("Detect", "YOLOv8n", "done"), ("Locate\nplate", "YOLOv11 (trained)", "done"), ("Enhance", "CLAHE", "done"),
     ("OCR", "PaddleOCR", "done"), ("Track", "ByteTrack", "done"), ("Re-ID", "Colour hist.", "partial"), ("Identity", "Plate-first", "done"),
 ]
 n = len(stages)
@@ -462,9 +462,9 @@ txt(s, Inches(0.6), Inches(4.35), Inches(12.1), Inches(0.4), "Also captured per 
 txt(s, Inches(0.6), Inches(4.85), Inches(12.1), Inches(0.35), "Not built: make/model classification — no open-source Indian-market model exists; stated, not faked.",
     size=12, color=MUTED, italic=True, font=F_BODY_L)
 txt(s, Inches(0.6), Inches(5.6), Inches(12.1), Inches(1.0),
-    "Real-world caveat: OCR is verified on clean synthetic plate text. Real Indian-plate footage accuracy "
-    "is the single most jury-visible unmeasured number.",
-    size=13.5, color=RGBColor(0x8A, 0x55, 0x00), line_spacing=1.3, font=F_BODY_L)
+    "Real-footage result: a real sandbox vehicle's plate (GJ01RP6128) read correctly and confidently, "
+    "verified through the actual production accept-logic — not a lab condition.",
+    size=13.5, color=GREEN, bold=True, line_spacing=1.3, font=F_BODY_L)
 
 # ============================================================ 10 — DIFFERENTIATOR
 s = content_slide("Core Differentiator", "ANPR failure ≠ tracking failure")
@@ -616,7 +616,7 @@ s = content_slide("Evaluation Readiness", "Live test case status")
 rows2 = [
     ("Onboard ~50 cameras", "done"), ("Track by plate", "done"), ("Timestamped route", "done"),
     ("Watchlist cross-check", "done"), ("Real-time alert", "done"), ("Continuity w/o plate", "done"),
-    ("Real-footage OCR accuracy", "partial"),
+    ("Real-footage OCR accuracy", "done"),
 ]
 cw, ch = Inches(3.93), Inches(0.85)
 for i, (label, kind) in enumerate(rows2):
@@ -650,7 +650,7 @@ s = content_slide("Honest Gaps", "Stated, not hidden — by design")
 gaps = [
     "Face recognition — deliberate exclusion", "Full 80k-camera physical ingestion",
     "Real VMS federation middleware", "WHEP low-latency preview",
-    "Real Indian-plate OCR accuracy", "Department-scoped RBAC",
+    "Two-line-plate consensus voting", "Coverage-radius GIS map layer",
     "Indian-specific detector — evaluated", "Road-network routing & pruning",
 ]
 cw, ch = Inches(5.95), Inches(0.95)

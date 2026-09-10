@@ -129,6 +129,32 @@ replacement VMS" pitch (STRATEGY.md).
   explicitly granted it. Not built this week (single flat role set today),
   but the schema and dependency-injection pattern (`api/auth.py`) already
   supports adding the department-scope check without restructuring.
+- **Backup:** distinct from the HA/DR failover above — automated daily
+  PostgreSQL base backups plus continuous WAL archiving (standard
+  Postgres practice, e.g. `pgBackRest`/`WAL-G`), retained per the same
+  hot/warm/cold windows as §4's live data, stored in a separate
+  availability zone/region from the primary so a backup isn't lost to the
+  same failure it's meant to recover from. Not built for the pilot's
+  single SQLite file — a `sqlite3 .backup` cron job is the pilot-scale
+  equivalent, sufficient for a ~30-camera demo, not a production
+  substitute for the above.
+- **Encryption:** TLS for every network hop (camera→edge stays on the
+  department's own trusted network per §3; edge→regional→central and all
+  operator-facing traffic run over TLS). At rest: full-disk/volume
+  encryption on the database and object-storage tiers (standard cloud
+  provider disk encryption, or LUKS for on-prem), plus the existing
+  application-level protection already built for this submission — API
+  keys are stored as SHA-256 hashes, never plaintext (`api/auth.py`), and
+  the sandbox's own camera credentials are never exposed to the browser,
+  only proxied server-side (`routes_stream.py`).
+- **Network segmentation:** edge units sit on each department's own
+  network segment (no direct internet exposure); only the structured
+  event stream and the specific live-view relay traffic cross into the
+  regional/central tier, through a defined gateway — the same "camera
+  video never leaves its region except for an actively-opened view"
+  principle as §3, extended to network topology, not just bandwidth.
+  Central-tier API and database sit in their own segment, reachable only
+  through the API gateway, not directly from edge/regional networks.
 
 ## 6. Phased rollout
 

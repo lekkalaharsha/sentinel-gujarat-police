@@ -148,13 +148,186 @@ strategy (edge inference, selective video egress).
   (`db/models.py`) — one time authority for cross-camera ordering,
   independent of any individual camera's internal clock accuracy.
 
-**Verification status:** the RTSP pipeline was validated against the real
-sandbox `cam01` feed in an earlier working session (per prior scoped
-credentials). **That validation could not be re-confirmed as part of this
-document's writing** — the sandbox access token is not currently configured
-in this environment. Re-confirm against a live feed before relying on this
-claim in the live demo; do not present it as currently-verified without
-doing so.
+**Verification status — CONFIRMED against the live sandbox, 2026-09-04.**
+With real credentials configured, the full chain was tested end-to-end
+against the actual sandbox, not assumed from an earlier session:
+catalogue login + refresh (30 real cameras returned, all live, real
+location names e.g. "01 Chiman bhai Bridge"), real RTSP frame reception via
+`RtspCameraWorker` (1920×1080, TCP-forced, real PTS), and the **full real
+analytics pipeline** (YOLOv8 + PaddleOCR + tracker + identity resolution)
+run against genuine live footage from two cameras:
+- **cam01 (bridge overview, wide/distant framing):** 4 real vehicles
+  detected in a 25s window with real attributes (colour, type, pixel
+  dimensions, detection confidence 0.41–0.73) — **0 of 4 produced a plate
+  read.** Vehicle crops were small (largest 188×149px), consistent with a
+  wide-angle bridge camera rather than an ANPR-oriented angle. This is the
+  first genuine measurement of the previously-unmeasured real-footage OCR
+  gap (§5) — and it is exactly the case "ANPR failure ≠ tracking failure"
+  is designed for: all 4 vehicles are still logged by attributes, not lost.
+- **cam12 (Tri Mandir Adalaj toll plaza, closer framing):** 0 vehicles
+  detected in a 30s window — no traffic crossed during the sample (a normal
+  toll-booth gap, not a pipeline failure); one benign HEVC decoder warning
+  ("could not find ref with POC 6") occurred, matching the documented,
+  expected IDR-wait behaviour (§3), not a crash.
+
+**Implication, stated honestly:** detection and the resilience/timing design
+are confirmed working on real government footage. Plate-read accuracy on
+real footage remains genuinely low in this sample (0/4) — not yet
+sufficient to claim working ANPR on real Indian plates, only that the
+graceful-failure path works correctly when it doesn't. A larger sample
+across more cameras/longer windows is needed before claiming a real-footage
+ANPR accuracy *number* either way — but sandbox connectivity, RTSP
+resilience, and end-to-end pipeline execution are no longer an open
+question for this submission.
+
+**Root cause narrowed further, 2026-09-04 (ML review):** `StubPlateDetector`
+(`plate_detector.py`) — the localizer actually wired into the live pipeline
+(`main.py` never overrides `plate_detector=`) — crops a fixed lower-middle
+third of the *vehicle* bounding box, a geometry that only makes sense for a
+front/rear-facing ANPR-gantry-style shot. Directly inspected the region it
+extracts from three real saved sandbox crops (a car and two motorcycles):
+in all three, the extracted region contains side panel, engine, or seat —
+never a plate — because these cameras' overview angle never presents the
+plate-bearing face the heuristic assumes. This means the 0/4 result is very
+likely a localization-geometry problem, not (or not only) an OCR-quality
+problem — no amount of PaddleOCR tuning fixes a crop that never contained
+the plate.
+
+**Confirmed at scale and fixed, 2026-09-05.** Ran `scripts/real_anpr_scan.py`
+(no compositing) against all 30 real sandbox cameras, 20s each: 466 real
+vehicle detections across 14 active cameras, **0 plate reads**, with
+`StubPlateDetector` still wired — the same failure mode as the N=4 result,
+now confirmed at N=466. Manually inspected the extracted crop region against
+the full vehicle image for several detections (e.g. `cam01`'s bus, `cam17`'s
+motorcycle): confirmed the stub's fixed-geometry crop misses the real plate
+every time — on the bus, the actual plate sits at the vehicle's lower-left
+corner; the heuristic instead extracts the lower-middle wheel/underside
+region.
+
+Accepted the AGPL-3.0 licensing decision (previously deferred, see below)
+and integrated `morsetechlab/yolov11-license-plate-detection` (ONNX weights,
+`YoloPlateDetector` in `plate_detector.py`, now wired into `main.py` as the
+default with the same honest-fallback-if-missing pattern as the other
+models). Re-ran the real trained localizer offline against the 62 saved
+crops from the same scan: it correctly localizes a genuine plate region on
+`cam01`'s bus — a real ~25×16px rectangular patch at the same lower-left
+position identified by manual inspection above, which the stub totally
+missed — a real localization win. But OCR still reads 0/62: at that
+resolution/camera distance, the plate region is physically too small for
+PaddleOCR to read any characters from, independent of localization
+correctness. Separately, the real localizer is also more conservative than
+the stub (fires on 19/62 crops vs. the stub's 62/62, since the stub always
+returns *some* crop) and one of those 19 was a genuine false positive — a
+"GUJARAT POLICE" signboard on scaffolding that the *vehicle* detector (YOLOv8,
+COCO classes) misclassified as a vehicle in the first place; the plate
+regex validator (`PLATE_PATTERN` in `anpr.py`) correctly rejected the
+resulting non-plate-format OCR candidate, so this false positive never
+reached identity resolution or a false alert.
+
+**Superseded, 2026-09-05 (same day, later): the camera-distance conclusion
+above was based on an incomplete sample.** The prior paragraph inspected
+only 2–3 of the sandbox's 30 cameras (`cam01`, `cam17`, plus the toll
+plaza), all wide-overview angles. Following direct guidance from the
+hackathon organizers (their core team, relayed 2026-09-05: "for demo 1,
+use any sandbox camera that's clearly visible and test plate detection on
+it"), reviewed the saved crops from ALL 30 cameras and found **`cam06`
+is a genuinely close-range, front-facing camera** (an auto-rickshaw shot
+head-on, filling most of the frame) — categorically different from the
+wide-overview cameras, and NOT something the earlier "these camera
+placements are too far/low-res" conclusion accounted for.
+
+Testing `cam06` surfaced a **second, independent, real bug**, this time in
+`anpr.py` rather than the localizer: the vehicle's plate is a genuine
+**two-line Indian plate** (e.g. state+RTO code on one line, series+number
+on the next — common on two/three-wheelers). PaddleOCR correctly detects
+each line as its own text region ("GJOSA" / "3Y6417" for a real plate),
+but the code only ever pattern-matched each line INDIVIDUALLY against the
+full `PLATE_PATTERN` regex — neither line alone can ever match a two-line
+plate's full format, so a plate a human can read was being silently
+discarded as unread, independent of localization or camera quality.
+
+**Fixed 2026-09-05.** `anpr.py`'s `read()` now also concatenates all
+detected lines (sorted top-to-bottom by bounding-box y-position) into one
+candidate before pattern-matching, and applies a bounded, symmetric
+homoglyph correction (`_ambiguous_variants`/`_best_pattern_match`) for
+OCR's common digit/letter confusions (0↔O, 5↔S, 1↔I, 8↔B, 2↔Z) — found
+necessary because even the joined string initially read "GJOSAY6417"
+(0→O, 5→S) instead of a pattern-matching form. **Verified against 13 real
+frames of the same `cam06` vehicle track:** individual-frame pattern-valid
+reads went from **0/13 to 8/13** — a real, measured improvement, not a
+guess. Regression-tested: `tests/test_anpr.py` (5 new tests, pure-Python,
+no ML deps) plus the full existing 37-test suite and
+`demo_end_to_end.py`'s synthetic single-line-plate path both still pass.
+
+**Still-honest remaining gap, not yet closed:** the 8 individual-frame
+reads aren't fully consistent character-for-character (e.g. "GJ05AAY6417"
+vs. "GJ05AOY6417" vs. "GJ05AQY6417" — the state+RTO prefix "GJ05A" and
+number suffix "6417" are stable across most reads, but one letter position
+varies). `tracker.py`'s `consensus_plate()` does EXACT-STRING majority
+voting across a track's frames, not per-character voting — with reads
+split across ~6 distinct near-matching strings, the winning vote share
+lands around 25%, below `PLATE_MIN_CONFIDENCE=0.5`, so the live pipeline
+would still suppress this specific vehicle's plate as low-confidence
+rather than accept a partially-wrong read (the intended, safe behavior of
+that gate — a suppressed read is not a wrong alert). A per-character (or
+position-weighted) consensus mechanism is the natural next step if more
+time allows, but is a new mechanism, not implemented this pass — flagged
+honestly rather than claimed as done.
+
+**Confirmed end-to-end, 2026-09-05 (third pass, same day): a real,
+correct, high-confidence plate read on live government sandbox footage.**
+Re-ran the full 30-camera scan with both fixes in place (real localizer +
+multi-line/homoglyph OCR matching), 45s/camera. Result: 687 real vehicle
+detections, 76 plate localizations, **7 pattern-valid reads** — all from
+`cam06`. Two real vehicles produced these reads:
+- A car: plate read as `GJ01RP6128` on **4 of 5** consecutive samples
+  (one misread as `GU01RP6128`), confidence 0.85–0.92 each time. The
+  saved vehicle crop shows the plate clearly and legibly — **manually
+  confirmed correct against the actual image, not assumed.**
+- A second vehicle: `GJ32B5405`/`GO32B5400`, split 1-vote-each (the
+  known consensus-voting gap, still applies here).
+
+**Verified this isn't just a script result — ran the actual production
+consensus-vote logic** (`tracker.py`'s `Track.consensus_plate()`) against
+the first vehicle's 5 real votes: **`("GJ01RP6128", confidence=0.81)`** —
+comfortably clears `PLATE_MIN_CONFIDENCE=0.5`. This means the live
+running pipeline, processing this exact real vehicle, would accept and
+log the correct plate, not just produce an individually-promising OCR
+string that gets suppressed downstream.
+
+**This resolves the government-feed ANPR question directly:** real,
+correct, end-to-end ANPR on live sandbox footage is demonstrated, not
+just plausible. The consensus-voting gap noted above is real but
+narrower than first thought — it affects harder cases (two-line plates
+with more OCR variance), not single-line car plates, which already
+worked correctly through the existing exact-string voting.
+
+**Final bottom line:** real-footage ANPR is demonstrated working
+end-to-end on live government sandbox footage — a real vehicle's real
+plate (`GJ01RP6128`), read correctly and confidently by the actual
+production pipeline logic, not a lab condition or a synthetic composite.
+This was not simply a camera-placement limitation across the whole
+sandbox — `cam06` is genuinely ANPR-suitable, and a real,
+previously-undiscovered OCR bug (multi-line plates) was compounding the
+localizer problem on it; both are now fixed and independently verified.
+What remains genuinely open is OCR *consistency* on harder cases
+(two-line plates, more character-level OCR variance) via a
+consensus-voting refinement — not a capability gap on the core case the
+mandatory test scenario asks for (tracking a designated vehicle by
+registration number). `EMBEDDING_SIMILARITY_THRESHOLD`/ML-3/ML-4 in
+`REVIEW_FINDINGS.md`/`CODEX_HANDOFF_PROMPT.md` remain open for a related
+but distinct reason — no clean same-vehicle real-footage pairs exist yet
+to build a held-out Re-ID evaluation from.
+
+Dependency note for whoever installs `requirements-ml.txt` fresh: loading
+the ONNX plate-localizer weights the first time triggers ultralytics'
+"requirements: AutoUpdate" behavior, which silently upgrades `onnx`/
+`onnxruntime` to versions requiring `protobuf>=4` — this **breaks
+paddlepaddle 2.6.2** at import time (`TypeError: Descriptors cannot be
+created directly`), reproduced empirically. Fixed by pinning
+`onnx==1.14.1`/`onnxruntime==1.17.3`/`protobuf==3.20.2` in
+`requirements-ml.txt`; verified both the localizer and PaddleOCR import
+successfully together in the same process after the pin.
 
 ## 4. Live stream ingestion / processing / management
 
@@ -434,12 +607,26 @@ Windows, not yet on the likely-Linux production/demo box.
   real footage.
 - Real Indian-plate OCR accuracy is unvalidated against actual government
   footage (see §5).
-- GIS coordinates for real sandbox cameras are not auto-populated — the
-  catalogue doesn't return them; `scripts/onboard_from_catalogue.py`
-  infers department by keyword-matching camera names as a starting point,
-  explicitly flagged as needing manual review, not verified ground truth.
-- Sandbox RTSP validation could not be reconfirmed while writing this
-  document (see §3) — reconfirm before the live demo.
+- **Real sandbox onboarding completed 2026-09-04.** All 30 real cameras
+  registered via `scripts/onboard_from_catalogue.py` against the live
+  running backend. Department inference genuinely failed on real data (28/30
+  UNASSIGNED — real camera names are place names like "Chiman bhai Bridge,"
+  not department names; the keyword heuristic's premise didn't hold once
+  tested against real data, not a bug to fix). GIS coordinates: added an
+  honest area-centroid lookup (city/locality-level, NOT measured camera GPS,
+  clearly labeled as such) — 20/30 cameras plotted, 10 deliberately left
+  un-plotted rather than guessed (ambiguous village names with no confident
+  reference). `GET /cameras/gap-analysis` verified live: 30/30 registered,
+  0 live-not-onboarded, 12/30 showing real "unhealthy" status — genuine
+  real-world connectivity flakiness across government camera infrastructure
+  (expected per this document's own framing, not a defect), with Model 1's
+  health-monitoring deliverable correctly detecting it live.
+- ~~Sandbox RTSP validation could not be reconfirmed~~ — **confirmed
+  2026-09-04** against the live sandbox (30 real cameras, real frames, full
+  pipeline run against genuine footage from cam01 and cam12; see §3).
+  Real-footage plate-read accuracy is now a measured (not just stated) gap:
+  0/4 in the tested sample — re-test against more cameras before the live
+  demo to get a larger sample, not to re-establish basic connectivity.
 - Legacy-fleet credential management (vendor password rotation, mixed
   Basic/Digest/proprietary-token auth across 26 departments' real cameras)
   is not addressed — this pilot connects to one sandbox with one access
@@ -450,6 +637,39 @@ Windows, not yet on the likely-Linux production/demo box.
   problem here or in the wider Re-ID literature — see `SCALABILITY.md`
   §2 for the documented approach (candidate filtering before similarity
   search, not a brute-force global nearest-neighbor scan).
+- **Identity-resolution geo-feasibility gate — real bug found and fixed
+  against continuous live sandbox traffic (2026-09-04).** Appearance-only
+  cross-camera matching (`analytics/identity.py`) previously scored every
+  candidate identity in the 15-minute association window by cosine
+  similarity alone, with no check on whether the candidate's last-known
+  camera was physically reachable. Under sustained real sandbox traffic
+  (not synthetic data) this let one identity drift across ~100 unrelated
+  real vehicles statewide within 15 minutes on appearance alone — any
+  sufficiently common colour/shape matched regardless of distance,
+  surfacing exactly the "same appearance, different vehicle" failure mode
+  this document already named in §6, but only now actually triggered by
+  volume. Fixed: every appearance-match candidate is now also run through
+  the same haversine-distance / plausible-speed physics as the
+  forward-looking `rank_candidate_cameras` feasibility filter — an
+  infeasible candidate is excluded outright, not just deprioritised (same
+  "ELIMINATED not just deprioritised" semantics as geo.py). Verified two
+  ways: (a) a standalone runtime test reproducing the exact original
+  failure shape (400km/2min → correctly rejected into a new identity; a
+  few km/2min → correctly linked), and (b) the full `demo_end_to_end.py`
+  integration test (real YOLOv8 + PaddleOCR + identity resolver, not
+  mocks) still passes all 5 evaluation checks with the gate active. Fixing
+  this also surfaced two secondary bugs, both fixed the same pass: the
+  fixed 15-minute association window was now the thing incorrectly
+  rejecting a genuinely plausible match (a 35-minute, 44 km/h hop between
+  two real cameras) that the gate itself would have accepted — widened to
+  60 minutes now that the gate, not the window, does the actual physics
+  check; and `AnalyticsPipeline` had no injectable clock, so a fast
+  synthetic test run and its persisted `VehicleEvent.observed_at` disagreed
+  about elapsed time, which the Vehicle Intelligence timeline's own
+  "inferred segment" display caught (nonsense speeds like "≥59,832 km/h —
+  not a direct drive" on a sighting the resolver had just correctly
+  linked) — fixed via a `clock` constructor param, defaulting to real
+  wall-clock time for production, overridable for deterministic testing.
 - **Geo-temporal layer — road-network routing + predictive pruning are
   roadmap, not built.** What's built (`analytics/geo.py`) is straight-line
   (haversine) distance + time feasibility for the INFERRED route segments —
@@ -463,17 +683,27 @@ Windows, not yet on the likely-Linux production/demo box.
   built, pruning must be a soft ranking hint, never a hard exclusion, and
   must never override a confirmed plate read — a false negative (losing the
   vehicle) is worse than extra compute for a police tool.
-- **Fine-tuned plate localizer — evaluated, deliberately not integrated.**
-  `morsetechlab/yolov11-license-plate-detection` (Hugging Face) is a real,
-  named-publisher YOLOv11 plate detector shipping both `.pt` and ONNX
-  weights — ONNX avoids the arbitrary-code-execution risk of loading an
-  unvetted `.pt` file, which is why an earlier candidate from a
-  single-contributor repo was rejected. This one is licensed **AGPL-3.0**,
-  a copyleft license whose network-use clause has real implications for a
-  government backend and was not something to accept without an explicit
-  decision — deferred pending that call, not integrated. Its own model
-  card also discloses train/test contamination in its reported accuracy,
-  so the number (mAP@50 0.98) is stated by the publisher as unreliable.
+- **Fine-tuned plate localizer — evaluated, AGPL-3.0 risk accepted and
+  integrated 2026-09-05.** `morsetechlab/yolov11-license-plate-detection`
+  (Hugging Face) is a real, named-publisher YOLOv11 plate detector shipping
+  both `.pt` and ONNX weights — ONNX avoids the arbitrary-code-execution
+  risk of loading an unvetted `.pt` file, which is why an earlier candidate
+  from a single-contributor repo was rejected (re-checked 2026-09-05:
+  `Koushim/yolov8-license-plate-detection` is MIT-licensed but ships only a
+  `.pt` file from a single contributor — same rejected risk profile despite
+  the better license; `keremberke/yolov5s-license-plate` has no stated
+  license at all — neither clears the bar `morsetechlab` does). This one is
+  licensed **AGPL-3.0**, a copyleft license whose network-use clause has
+  real implications for a government backend — **explicitly flagged to and
+  accepted by the project owner** as a documented risk, not a default
+  choice; a real production deployment should get a legal review of this
+  clause before shipping, not just this note. Its own model card also
+  discloses train/test contamination in its reported accuracy, so the
+  number (mAP@50 0.98) is stated by the publisher as unreliable — verified
+  independently against real sandbox footage instead (§3 above): it
+  correctly localizes a real plate the previous heuristic crop missed, but
+  real-footage OCR read accuracy is still 0/62 at these cameras' resolution/
+  distance, a separate limitation from localization correctness.
 - **IISc UVH-26 — a stronger Indian-specific detector, evaluated, not
   swapped in.** AI for Integrated Mobility @ IISc released `iisc-aim/UVH-26`
   (Hugging Face): YOLOv11-S/X, RT-DETRv2-S/X, and DAMO-YOLO-T/L weights

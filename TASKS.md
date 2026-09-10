@@ -1,69 +1,119 @@
 # Sentinel — Next Actions
 
-Living task list. Deadline **7 September 2026** (Phase 1), event 10–11 Sep.
-Last updated **2026-09-04**. Cross-check against `REQUIREMENTS_COVERAGE.md`
-(the authoritative deliverable-status matrix) and `sentinel-solution/README.md`
-("Known issues") before trusting this file if it's more than a day or two old
-— both decay fast and this file summarizes them, not the other way round.
+Living task list. Deadline **15 September 2026** (Phase 1, updated
+2026-09-05 — was 7 Sep), event 22–23 Sep (was 10–11 Sep).
+Last updated **2026-09-05** (reconciled against actual code — several
+entries below were stale/already fixed and have been corrected).
+Cross-check against `REQUIREMENTS_COVERAGE.md` (the authoritative
+deliverable-status matrix) and `sentinel-solution/README.md` ("Known
+issues") before trusting this file if it's more than a day or two old.
 
 ## P0 — hard submission blockers
 
-- [ ] **Run `scripts/onboard_from_catalogue.py` before recording ANY video.**
-      Confirmed 2026-09-04 by actually loading the UI: the backend has all
-      30 real sandbox cameras live-streaming (`/health` shows 30 active
-      workers), but the Map & Registry tab — the first thing anyone sees —
-      shows **"Camera registry (0) — No cameras onboarded yet."** The live
-      RTSP worker state and the Model 1 `CameraRegistry` DB table are
-      separate; nothing populates the registry automatically. Recording a
-      demo video against this right now would open on an apparently-broken,
-      empty app. Review the script's department-keyword inference output
-      before trusting it (README already flags this), but run it first.
+- [ ] **Re-verify camera-registry auto-population before recording video.**
+      Originally: "backend has 30 live workers but registry shows 0
+      onboarded." **Partially stale** — `main.py`'s health-sync loop
+      auto-creates a bare `CameraRegistry` row for any active worker
+      (confirmed empirically 2026-09-05: a fresh DB showed "Onboarded 30"
+      with zero manual onboarding calls). What's still missing is
+      department/GIS metadata on those auto-created rows — run
+      `scripts/onboard_from_catalogue.py` for that, but the "empty-looking
+      app" risk from the original note is likely gone. Confirm this on the
+      actual recording machine before trusting it, not just this note.
 - [ ] **Record the own-feed demo video** (§9.3, 2–3 min, must show a real
-      working backend, no mock-ups). Doesn't need the sandbox — unblocked
-      now. Script: `DEMO_SCRIPT_OWN_FEED.md` +
+      working backend, no mock-ups). Script: `DEMO_SCRIPT_OWN_FEED.md` +
       `scripts/demo_end_to_end.py` with `SENTINEL_DEMO_PERSIST=1`, then
       `python -m app.main` + `npm run dev` and screen-record the UI walkthrough.
-      **This is the single highest-leverage remaining task — nothing else
-      blocks submission harder than having zero video progress.**
-- [ ] **Record the government-feed demo video** (§9.4, live/recorded feed +
-      screen-recorded output report of detected plates/timestamps). Sandbox
-      access is now confirmed working (2026-09-04 fix) — this is genuinely
-      unblocked, not still gated. Run against real `cam01`–`cam30`.
-- [x] Solution Presentation (PPT) — v2 done 2026-09-04
-      (`Sentinel_Solution_Presentation.pptx`, 20 slides): real flowchart
-      diagrams with connector arrows, Bahnschrift/Segoe UI typography, far
-      less text per slide, references slide added. v1 kept as
-      `Sentinel_Solution_Presentation_v1.pptx`. Regenerate via
-      `deck-build/build_deck_v2.py` — visually re-verify via PowerPoint COM
-      export (see script comments); python-pptx opening the file
-      successfully is NOT sufficient proof it's valid, see the float-EMU
-      bug noted in project memory.
+      **Organizer guidance received 2026-09-05** (their core team, relayed
+      by the user): for this demo, using any clearly-visible real sandbox
+      camera is fine — no longer needs to be literally "our own feed."
+      `cam06` (a real, close-range, front-facing camera identified today)
+      now has a genuinely strong headline result: a real car's plate
+      (`GJ01RP6128`) read correctly 4/5 times, confirmed via the actual
+      `tracker.py` consensus-vote logic to produce an accepted
+      confidence-0.81 read — not just a promising OCR string (see `HLD.md`
+      §3). **Lead the video with this real result**, not the
+      synthetic-composite montage. Still need the terminal "it's real"
+      proof shot, captions, and final `ffmpeg` concatenation. **Still the
+      single highest-leverage remaining task.**
+- [x] ~~Record the government-feed demo video~~ (§9.4) — **externally
+      blocked, per organizer guidance 2026-09-05**: the hackathon's own
+      core team said their sandbox is still being fixed on their end for
+      this specific test case. Don't force this recording; revisit once
+      they signal it's ready. (The HLS live-view proxy bug that was
+      independently blocking this — a CDN User-Agent gate — is fixed on
+      our side regardless, so we're ready the moment their sandbox is.)
+- [x] Solution Presentation (PPT) — v2 done 2026-09-04.
 - [x] Technical Proposal / HLD — `sentinel-solution/HLD.md`
 - [x] Scalability Strategy — `sentinel-solution/SCALABILITY.md`
+- [x] Real-footage ANPR accuracy measurement — done 2026-09-05, corrected
+      twice same day, now conclusively positive: initial scan found 0
+      reads with only wide-overview cameras inspected; reviewing all 30
+      cameras found `cam06` (close-range, ANPR-suitable) and a second real
+      bug (two-line-plate/homoglyph matching in `anpr.py`) — fixed. A full
+      30-camera re-scan with both fixes then found a real car's plate
+      (`GJ01RP6128`) read correctly 4/5 times, confirmed via the actual
+      production consensus-vote logic to produce an ACCEPTED
+      confidence-0.81 read. Real, correct, end-to-end ANPR on live
+      government sandbox footage — not a promising string, the real
+      accept-path, locked in as a regression test
+      (`test_consensus_plate_real_cam06_vehicle_clears_confidence_gate`).
+      See `HLD.md` §3.
+- [x] HLS proxy 502/403 — done 2026-09-05 (CDN User-Agent gate, fixed in
+      `catalogue.py`).
+- [x] ANPR two-line-plate + homoglyph OCR bug — done 2026-09-05, see above.
 
-## P1 — do before the videos if time allows (raises what the videos show)
+## P1 — do before/alongside the videos if time allows
 
-- [ ] Measure real-footage OCR accuracy against actual sandbox camera
-      footage (currently only verified against clean synthetic plate text —
-      this is the single most jury-visible unmeasured number per HLD.md §5
-      and the risk register).
+- [ ] `VehicleSearch.jsx`'s "stale plate-search race" (no request
+      sequencing → a slow first search can overwrite a faster second one)
+      needs **re-verification under its new name** — that file was deleted
+      in the frontend rebuild; the plate-search UI now lives in
+      `SearchView.jsx` and/or `VehicleIntelligence.jsx`. Unknown whether
+      the race survived the rebuild or was incidentally fixed — check
+      before assuming either way.
+- [ ] `routes_auth.py`'s `create_api_key` still returns `{"error": ...}`
+      with HTTP 200 instead of a proper 400 for an invalid role — cheap
+      fix. (The matching `routes_cameras.py` `get_camera` issue TASKS.md
+      used to list here is already fixed — that endpoint now raises a
+      proper `HTTPException` consistently, confirmed by reading the
+      current code 2026-09-05.)
+- [ ] `search_by_attributes` truncates to 200 results with no total-count
+      signal — an investigator can get zero recent hits with no
+      indication results were cut off. (`routes_vehicle.py`)
+- [ ] Sample gap-analysis PDF export (endpoint exists, no exported sample
+      produced yet for the submission).
+- [ ] Close the 3 documentation-honesty points from `MODULE_GAP_ANALYSIS.md`:
+      multi-vendor claim wording ("designed for" vs. "demonstrated with"),
+      private/commercial CCTV coverage (currently unaddressed), external-DB
+      -integration honesty (confirm HLD is explicit VAHAN/SARTHI/etc. is
+      design-only).
+- [ ] `CODEX_HANDOFF_PROMPT.md`'s ML-3: empirically justify
+      `EMBEDDING_SIMILARITY_THRESHOLD=0.80` — still blocked on lacking
+      same-vehicle real-footage pairs; the extended deadline may make this
+      newly worth attempting (e.g. a controlled test driving one vehicle
+      past 2+ real sandbox cameras) rather than deferring further.
+- [ ] **New 2026-09-05:** per-character (or position-weighted) consensus
+      voting in `tracker.py`'s `consensus_plate()` — currently exact-string
+      majority vote, which splits `cam06`'s real 8-valid-reads-out-of-13
+      across ~6 distinct near-matching strings (below the 0.5 confidence
+      floor). A character-level vote per position would likely recover a
+      single confident read from the same real data. See `HLD.md` §3 for
+      the full context.
 
-## P2 — known code issues from the 2026-09-04 review, not yet fixed
-
-Ranked by how likely each is to visibly misbehave during a live demo:
+## P2 — known code issues, not yet fixed (lower demo-visibility risk)
 
 - [ ] **RTSP discontinuity detection doesn't survive a reconnect** —
       `last_pts_ms` resets to `None` on every reconnect, so a scene-loop
-      point that triggers a full reconnect (vs. a smooth PTS-backward moment
-      inside one connection) goes undetected and tracker/identity state
-      isn't reset. (`streaming/rtsp_client.py`)
-- [ ] **No FFmpeg read-timeout on `cap.read()`** — a stalled TCP session can
-      block forever instead of returning `ok=False`, which would silently
-      defeat the otherwise-correct backoff/reconnect logic.
-      (`streaming/rtsp_client.py`)
-- [ ] **Frontend: Safari's native-HLS path sends no API key** and fails with
-      no visible error banner (only the hls.js path attaches auth headers).
-      (`frontend/src/components/LiveView.jsx`)
+      point that triggers a full reconnect (vs. a smooth PTS-backward
+      moment inside one connection) goes undetected and tracker/identity
+      state isn't reset. (`streaming/rtsp_client.py`)
+- [ ] **No FFmpeg read-timeout on `cap.read()`** — a stalled TCP session
+      can block forever instead of returning `ok=False`, defeating the
+      otherwise-correct backoff/reconnect logic. (`streaming/rtsp_client.py`)
+- [ ] **Frontend: Safari's native-HLS path sends no API key** and fails
+      with no visible error banner (only the hls.js path attaches auth
+      headers). (`frontend/src/components/LiveView.jsx`)
 - [ ] **Frontend: map view doesn't distinguish OBSERVED vs. INFERRED route
       segments** — draws one uniform line regardless of link confidence,
       unlike the Vehicle Tracking timeline panel which does this correctly.
@@ -72,31 +122,30 @@ Ranked by how likely each is to visibly misbehave during a live demo:
       briefly reverts a just-acknowledged alert, second click then hits a
       confusing raw `409 illegal transition` error.
       (`frontend/src/components/AlertsPanel.jsx`)
-- [ ] **Frontend: stale plate-search race** — no request sequencing means a
-      slow first search can overwrite a faster second one, showing one
-      plate's number with another plate's history. (`VehicleSearch.jsx`)
-- [ ] **Possible SSRF/credential-leak gap in the HLS proxy** if
-      `authenticated_get` follows redirects to a third-party host — not
-      fully ruled out. (`routes_stream.py`, `catalogue.py`)
-- [ ] Two endpoints return `{"error": ...}` with HTTP 200 instead of a
-      proper 400/404 (`routes_auth.py` create-key, `routes_cameras.py`
-      get-camera) — cheap sweep-fix.
-- [ ] `VehicleIdentity` history lookup uses `.first()` on a non-unique-by-
-      construction query pattern — verify `identity.py` can't produce two
-      rows for one plate through any path other than the race already
-      fixed; if it can, `routes_vehicle.py`'s history endpoint silently
-      drops sightings with no indication anything was omitted.
-- [ ] `search_by_attributes` truncates to 200 results with no total-count
-      signal — an investigator can get zero recent hits with no indication
-      results were cut off. (`routes_vehicle.py`)
+
+~~VehicleIdentity history lookup uses `.first()` on a non-unique query
+pattern~~ — **not actually a bug**, re-verified 2026-09-05: `vehicle_identity
+.plate` has had a partial-unique DB constraint since 2026-09-04, so
+`.filter(plate==...).first()` can structurally never match more than one
+row. Remove from backlog.
+
+~~Possible SSRF/credential-leak gap in the HLS proxy~~ — **already fixed**,
+per `REVIEW_FINDINGS.md`'s `SEC-doc` entry (host-allowlist check +
+`allow_redirects=False`) — this TASKS.md entry was stale, not a real open
+item.
 
 ## P3 — nice-to-have if time remains
 
-- [ ] Multi-camera grid / video wall (Model 2 feature, not built)
-- [ ] Sample gap-analysis PDF export (endpoint exists, no exported sample)
-- [ ] Department-scoped RBAC (schema supports it, filter not implemented)
+~~Multi-camera grid / video wall~~ — **done 2026-09-05** (`CameraGridView.jsx`).
+~~Department-scoped RBAC~~ — **done 2026-09-05** (`api/auth.py`'s `department_scope`).
 - [ ] WHEP low-latency preview (HLS-via-proxy is the working path; low
-      priority — not required by the test case)
+      priority — not required by the test case).
+- [ ] Backend search/filter query params on `/cameras` (currently
+      client-side only in the frontend).
+- [ ] Coverage-radius/zone GIS map layer, ageing-infrastructure tracking
+      (install-date field).
+- [ ] Camera-onboarding audit trail (who onboarded/edited which camera —
+      `AuditLog` currently only covers vehicle-search purpose/case_id).
 
 ## Deliberately not doing (see STRATEGY.md's OUT list — don't silently build these)
 

@@ -20,10 +20,13 @@ Uniqueness: uses real government CCTV footage (not synthetic/demo data); top sol
 | Milestone | Date |
 |---|---|
 | Registration opens | 4 August 2026 |
-| Registration & submission deadline | 07 September 2026 |
-| Shortlisting | 7 September 2026 (evening) |
-| Event / Grand Finale | 10–11 September 2026 |
-| Results announced | 11 September 2026 |
+| Registration & submission deadline | 15 September 2026 |
+| Shortlisting | 15 September 2026 (evening) |
+| Event / Grand Finale | 22–23 September 2026 |
+| Results announced | 23 September 2026 |
+
+(Updated 2026-09-05 — confirmed against the live `/phases` and `/schedule`
+pages; deadline moved from the originally-stated 7 Sep / event 10–11 Sep.)
 
 ## 3. Who Can Participate
 

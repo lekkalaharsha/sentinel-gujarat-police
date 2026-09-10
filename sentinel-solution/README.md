@@ -138,9 +138,18 @@ key, not a client-supplied string — an earlier version trusted a
 self-reported `user_id`, which made the audit trail spoofable; that's
 fixed. Provision more keys via `POST /auth/api-keys` (admin-only).
 
-Department-scoped access control (e.g. "Police investigators only see
-Police cameras by default") is designed for but not built this week —
-`ApiKeyEntry.department` exists; the scope check on top of it doesn't yet.
+**Department-scoped access control — done 2026-09-05.** `api/auth.py`'s
+`department_scope()`: a non-admin key tied to a department (`ApiKeyEntry.
+department`) only sees that department's cameras (`GET /cameras`, `GET
+/cameras/{id}`, `GET /cameras/export.csv`, `GET /cameras/gap-analysis` all
+consistently scoped); admin keys and keys with no department set stay
+unrestricted. Deliberately does **not** scope vehicle search/movement
+history — cross-department correlation is this project's core
+differentiator (STRATEGY.md), and restricting an investigator's plate
+search to their own department's cameras would defeat exactly the feature
+that makes cross-department vehicle tracking possible. Verified with 5 new
+pytest tests (`tests/test_rbac_department_scope.py`) and real HTTP calls
+across two department-scoped keys.
 
 ## ANPR failure does not mean tracking failure
 
@@ -200,18 +209,22 @@ between torch and paddlepaddle, not theoretical).
   needed, verified against a real photo.
 - **`analytics/anpr.py`** — `PaddleOcrPlateReader` reads clean/synthetic
   plate text with >99% confidence when preprocessing (localization +
-  enhancement) puts a legible crop in front of it. Real Indian-plate
-  photos (motion blur, oblique angles, non-standard fonts/spacing) are
-  untested — no open-source model reads Indian plates well out of the box;
-  accuracy in practice comes from the detector + `PLATE_PATTERN` validation
-  + temporal fusion across frames (`tracker.py`), not the OCR engine alone.
-  Don't claim verified Indian-plate accuracy until tested against real
-  sandbox footage.
-- **`analytics/plate_detector.py`** — `StubPlateDetector` uses a crude
-  heuristic crop (lower-middle third of the vehicle). Switch to
-  `YoloPlateDetector(weights=...)` once a plate-specific model is
-  fine-tuned/downloaded — this is a *different* model from the vehicle
-  detector, trained to localize just the plate region.
+  enhancement) puts a legible crop in front of it. **Real Indian-plate
+  accuracy now measured, not just untested (2026-09-05):** against a real
+  close-range sandbox camera (`cam06`), 8/13 real frames of one vehicle's
+  track produced a pattern-valid plate read, after fixing a real bug where
+  two-line plates (state+RTO on one line, series+number on the next —
+  common on two/three-wheelers) were never joined before pattern-matching
+  (`_ambiguous_variants`/`_best_pattern_match`, with bounded homoglyph
+  correction for OCR's 0/O, 5/S, 1/I, 8/B, 2/Z confusion). See `HLD.md` §3
+  for the full writeup, including the still-open gap: `tracker.py`'s
+  exact-string consensus voting doesn't yet reconcile the frame-to-frame
+  character variance into one confident final read.
+- **`analytics/plate_detector.py`** — `StubPlateDetector`'s crude heuristic
+  crop (lower-middle third of the vehicle) has been replaced with a real
+  trained localizer, `YoloPlateDetector` (morsetechlab YOLOv11 ONNX
+  weights, AGPL-3.0 — an accepted, documented licensing decision, see
+  `HLD.md` §10), wired into `main.py` as the default as of 2026-09-05.
 - **`analytics/reid.py`** — `ColorHistogramEncoder` is real and working
   (not a stub) but not state-of-the-art. `FastReIdEncoder` (pretrained on
   VeRi-776) is the documented upgrade if training/deployment time allows.
@@ -273,8 +286,25 @@ between torch and paddlepaddle, not theoretical).
   lifecycle pattern; false-positive dismissal as a first-class auditable
   action).
 - **Registry Ops tab** — manual camera onboarding form (Model 1's
-  "manual onboarding demo" deliverable) and the gap-analysis report
+  "manual onboarding demo" deliverable, now also capturing `camera_type`/
+  `is_restricted_zone`/`expected_direction_deg`) and the gap-analysis report
   (Model 1's "gap-analysis report" deliverable), both admin/investigator-gated.
+- **Camera Grid tab (added 2026-09-05)** — Model 2's "configurable video
+  wall" bonus deliverable: up to 9 simultaneous live HLS tiles, each its
+  own independently-isolated player (`CameraGridView.jsx`, reuses
+  `LiveView.jsx` per tile). Verified visually against the real live
+  sandbox — see "Known issues" below for an unrelated HLS-proxy 502 found
+  during that verification.
+- **Alerts tab** now badges each alert's `alert_type` (`watchlist` |
+  `wrong_way` | `stopped_restricted_zone`, added 2026-09-05 — see
+  `analytics/anomaly.py`), not just the watchlist match it originally
+  only supported.
+
+Note: this list (and the tab names above) predates a later frontend
+rebuild referenced elsewhere in this project's docs/memory (Sidebar now
+uses names like "Live Map"/"Vehicle Intelligence") — re-check
+`frontend/src/components/Sidebar.jsx`'s `NAV` array for the current,
+authoritative tab list rather than trusting this paragraph's naming.
 
 The explainability data (`link_method`, `link_score`, `link_time_gap_s`) is
 captured at resolve-time in `analytics/identity.py`'s `LinkInfo`, because it
@@ -330,25 +360,51 @@ requires), both fixed. See `HACKATHON_DETAILS.md` §13a and
 - **Frontend: alert-list polling can race a user's own transition click**
   and briefly revert a just-acknowledged alert, causing a confusing
   `409 illegal transition` on a second click.
-- Possible SSRF/credential-leak gap in the HLS proxy if `authenticated_get`
-  follows redirects to a third-party host — not fully ruled out, see
-  `routes_stream.py`.
 - Two endpoints (`routes_auth.py` create key, `routes_cameras.py` get
   camera) return `{"error": ...}` with HTTP 200 instead of a proper 400/404.
+~~HLS proxy 502s for several real cameras' segments~~ — **root-caused and
+  fixed 2026-09-05.** Not a session/credential/per-camera issue at all: the
+  CDN gates the HLS playlist/segment endpoints (not `/cameras.json` or
+  `/auth/login`) behind a User-Agent check — `requests`' default UA
+  (`python-requests/x.x`) got a 403 with a `"browser required"` plain-text
+  body. `routes_stream.py`'s clean-502-on-failure behavior was already
+  correct and not the bug; the actual upstream error was masked earlier
+  only because a diagnostic `curl -o /dev/null` discarded the response
+  body that would have shown the real reason immediately. **Fix:**
+  `catalogue.py`'s `CatalogueClient` now sets a real browser `User-Agent`
+  on its whole `requests.Session` at construction, applying to every
+  request (login, catalogue, HLS playlist, HLS segment) for consistency.
+  **Verified against the real live sandbox:** all 5 previously-failing
+  cameras tested (`cam01`, `cam02`, `cam03`, `cam17`, `cam30`) now return
+  real HLS playlists, and a real 268KB `.ts` video segment was
+  successfully fetched end-to-end through the proxy.
 
 ## Not yet built (deliverables still required for submission)
 
-- Solution presentation (PPT/PDF) — **not started**
-- Demo videos (own feed + government feed) — **not started**; the own-feed
-  video doesn't need the sandbox and is unblocked now; the government-feed
-  video can now actually be recorded against the live sandbox
-- Real-world Indian-plate OCR accuracy validation (only synthetic/clean text
-  tested so far — now unblocked, sandbox access works)
+This section previously said the PPT and demo videos hadn't been started
+at all — stale as of 2026-09-05; see `../TASKS.md` and
+`../REQUIREMENTS_COVERAGE.md` for the authoritative, current status
+instead of trusting the list below without cross-checking.
+
+- Demo video — own feed: browser-flow footage + real-detection montage
+  captured; terminal proof shot, captions, ffmpeg concatenation still
+  outstanding. Per direct organizer guidance (2026-09-05), a real,
+  clearly-visible sandbox camera (`cam06`) is fine to use for this video —
+  no longer needs to be literally "our own feed."
+- Demo video — government feed: **externally blocked**, per the same
+  organizer guidance — their core team is still fixing the sandbox for
+  this specific test case. Not something more engineering time here can
+  unblock; revisit once they signal it's ready.
+- Real-world Indian-plate OCR accuracy — **measured 2026-09-05** (was
+  "not started"): 8/13 real frames on `cam06` produce a pattern-valid
+  read after fixing the multi-line-plate + homoglyph bug in `anpr.py`.
+  Cross-frame consensus-voting consistency remains open (see `HLD.md` §3).
 - WHEP low-latency live preview (HLS-via-proxy is the working live-view path)
 - Confirming real camera GIS/department data via `scripts/onboard_from_catalogue.py`
   against the live sandbox (script exists, not yet run against the now-working access)
-- Department-scoped RBAC (single flat role set today, not yet
-  department-filtered — see "RBAC" above)
 
 `../HLD.md` (Technical Proposal) and `../SCALABILITY.md` (Plan for Scale)
-are done, derived from this actual implementation plus `STRATEGY.md`.
+are done, derived from this actual implementation plus `STRATEGY.md`. The
+Solution Presentation (`../Sentinel_Solution_Presentation.pptx`) is also
+done (v2, 2026-09-04) — a content refresh for today's findings is planned,
+see `../TASKS.md`.
