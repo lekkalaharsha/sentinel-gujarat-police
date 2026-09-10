@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "../api";
 
 // Attribute-based search — GET /vehicle/search-by-attributes has existed on
@@ -13,6 +13,7 @@ export default function SearchView({ onOpenPlate }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const abortRef = useRef(null);
 
   async function submit(e) {
     e.preventDefault();
@@ -20,6 +21,9 @@ export default function SearchView({ onOpenPlate }) {
       setError("purpose is required — this is an audited lookup.");
       return;
     }
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
     setError(null);
     try {
@@ -28,13 +32,16 @@ export default function SearchView({ onOpenPlate }) {
         color: color || undefined,
         partialPlate: partialPlate || undefined,
         caseId: caseId.trim() || undefined,
+        signal: controller.signal,
       });
+      if (controller.signal.aborted) return;
       setResult(data);
     } catch (err) {
+      if (controller.signal.aborted) return;
       setError(err.message);
       setResult(null);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }
 

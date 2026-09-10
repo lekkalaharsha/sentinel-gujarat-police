@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "../api";
 import VehicleTimeline from "./VehicleTimeline";
 import ExplainabilityPanel from "./ExplainabilityPanel";
@@ -13,6 +13,7 @@ export default function VehicleIntelligence({ initialPlate, onResult, onOpenGrap
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const abortRef = useRef(null);
 
   async function submit(e) {
     e.preventDefault();
@@ -20,18 +21,23 @@ export default function VehicleIntelligence({ initialPlate, onResult, onOpenGrap
       setError("plate and purpose are required — every query is audit-logged against your API key.");
       return;
     }
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
     setError(null);
     try {
-      const data = await api.vehicleHistory(plate.trim(), purpose.trim(), caseId.trim() || undefined);
+      const data = await api.vehicleHistory(plate.trim(), purpose.trim(), caseId.trim() || undefined, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       setResult(data);
       setSelectedIndex(data.sightings?.length ? data.sightings.length - 1 : null);
       onResult?.(data);
     } catch (err) {
+      if (controller.signal.aborted) return;
       setError(err.message);
       setResult(null);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }
 

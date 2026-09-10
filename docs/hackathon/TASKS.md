@@ -65,13 +65,18 @@ issues") before trusting this file if it's more than a day or two old.
 
 ## P1 — do before/alongside the videos if time allows
 
-- [ ] `VehicleSearch.jsx`'s "stale plate-search race" (no request
-      sequencing → a slow first search can overwrite a faster second one)
-      needs **re-verification under its new name** — that file was deleted
-      in the frontend rebuild; the plate-search UI now lives in
-      `SearchView.jsx` and/or `VehicleIntelligence.jsx`. Unknown whether
-      the race survived the rebuild or was incidentally fixed — check
-      before assuming either way.
+- [x] **Stale-search race — fixed 2026-09-10.** Confirmed the race
+      survived the frontend rebuild in both `VehicleIntelligence.jsx` and
+      `SearchView.jsx` (`submit()` in each fired a plain `fetch` with no
+      request-sequencing, so a slow first search could overwrite a faster
+      second search's results). Fixed with an `AbortController` per
+      submit in both components: the previous in-flight request is
+      aborted before a new one starts, and `api.js`'s `vehicleHistory`/
+      `searchByAttributes` now accept and forward a `signal`. Verified
+      with `npm run build` (clean) and `npm run lint` (no new warnings);
+      not click-tested in a live browser this session (no browser
+      automation tool available) — worth a manual double-search check
+      before the demo.
 - [x] **`create_api_key` 200-vs-400 — fixed 2026-09-10.** `routes_auth.py`
       now imports `HTTPException` and raises `HTTPException(400, "role
       must be one of admin, investigator, viewer")` for an invalid role

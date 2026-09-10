@@ -43,18 +43,18 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(camera),
     }),
-  vehicleHistory: (plate, purpose, caseId) => {
+  vehicleHistory: (plate, purpose, caseId, { signal } = {}) => {
     const params = new URLSearchParams({ purpose });
     if (caseId) params.set("case_id", caseId);
-    return request(`/vehicle/${encodeURIComponent(plate)}/history?${params}`);
+    return request(`/vehicle/${encodeURIComponent(plate)}/history?${params}`, { signal });
   },
-  searchByAttributes: (purpose, { vehicleType, color, partialPlate, caseId } = {}) => {
+  searchByAttributes: (purpose, { vehicleType, color, partialPlate, caseId, signal } = {}) => {
     const params = new URLSearchParams({ purpose });
     if (vehicleType) params.set("vehicle_type", vehicleType);
     if (color) params.set("color", color);
     if (partialPlate) params.set("partial_plate", partialPlate);
     if (caseId) params.set("case_id", caseId);
-    return request(`/vehicle/search-by-attributes?${params}`);
+    return request(`/vehicle/search-by-attributes?${params}`, { signal });
   },
   listWatchlist: () => request("/watchlist"),
   addWatchlist: (plate, reason) =>
