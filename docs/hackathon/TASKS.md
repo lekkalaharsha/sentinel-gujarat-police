@@ -183,12 +183,43 @@ item.
 ~~Department-scoped RBAC~~ — **done 2026-09-05** (`api/auth.py`'s `department_scope`).
 - [ ] WHEP low-latency preview (HLS-via-proxy is the working path; low
       priority — not required by the test case).
-- [ ] Backend search/filter query params on `/cameras` (currently
-      client-side only in the frontend).
-- [ ] Coverage-radius/zone GIS map layer, ageing-infrastructure tracking
-      (install-date field).
-- [ ] Camera-onboarding audit trail (who onboarded/edited which camera —
-      `AuditLog` currently only covers vehicle-search purpose/case_id).
+- [x] **Backend search/filter query params on `/cameras` — done
+      2026-09-10.** Added `department`/`camera_type`/`is_healthy`/`live`
+      (exact match) and `q` (case-insensitive substring on id/location)
+      as optional query params on `GET /cameras`; applied after
+      department-scoping so a non-admin key still can't see outside its
+      own scope. No existing client-side camera-filter UI was found to
+      migrate (the frontend rebuild appears to have dropped it, same as
+      the old `VehicleSearch.jsx`) — left as a backend capability with
+      regression coverage (`test_camera_registry_model1.py`), not wired
+      to a new frontend surface, to avoid inventing UI beyond what was
+      asked.
+- [x] **Coverage-radius/zone GIS map layer, ageing-infrastructure
+      tracking — done 2026-09-10.** Added `CameraRegistry.install_date`/
+      `coverage_radius_m` (additive migration in `db/session.py`), wired
+      into `CameraOnboard`/`_apply_onboard_fields`/`_merged_camera_view`/
+      CSV export/`OnboardCameraForm.jsx`. `MapView.jsx` renders a
+      coverage-radius `Circle` per camera with a radius set, and a
+      dashed marker outline + popup note for cameras installed more than
+      `SENTINEL_CAMERA_AGEING_THRESHOLD_YEARS` (config.py, default 5)
+      ago. Gap-analysis JSON/PDF/`GapAnalysisPanel.jsx` all report
+      `ageing`/`missing_install_date` alongside the existing categories.
+- [x] **Camera-onboarding audit trail — done 2026-09-10.** New
+      `CameraAuditLog` table (separate from the existing purpose-bound
+      `AuditLog`, which doesn't fit a registry edit) records `onboarded`
+      vs. `updated` per camera per onboard/bulk-onboard call, with
+      `user_id`/`created_at`. New admin-only `GET
+      /cameras/{camera_id}/audit-log`. Regression test caught a real
+      ordering bug: two edits in the same test can share an identical
+      `created_at` (default's resolution can tie), making `ORDER BY
+      created_at DESC` nondeterministic — fixed with an `id DESC`
+      tiebreak; confirmed deterministic across 5 repeated full-suite runs
+      after the fix.
+
+All three verified: real additive migration run against the actual
+accumulated `sentinel.db` (not a fresh DB) — both new columns and the new
+table created cleanly, no data loss. Full backend suite 53/53 passed;
+`npm run build`/`npm run lint` both clean, no new warnings.
 
 ## Deliberately not doing (see STRATEGY.md's OUT list — don't silently build these)
 

@@ -107,6 +107,13 @@ RETENTION_SWEEP_INTERVAL_S = float(os.environ.get("SENTINEL_RETENTION_SWEEP_INTE
 API_HOST = os.environ.get("API_HOST", "0.0.0.0")
 API_PORT = int(os.environ.get("API_PORT", "8000"))
 
+# Model 1's gap-analysis "ageing-infrastructure" flag: a camera whose
+# CameraRegistry.install_date is older than this many years is surfaced as
+# "ageing" (routes_cameras.py's gap-analysis). 5 years is a common
+# CCTV-hardware refresh-cycle assumption, not a Gujarat-Police-specified
+# figure — override via env if a real departmental policy differs.
+CAMERA_AGEING_THRESHOLD_YEARS = float(os.environ.get("SENTINEL_CAMERA_AGEING_THRESHOLD_YEARS", "5"))
+
 # Named-anomaly-alert thresholds (see analytics/anomaly.py). Image-plane
 # metrics only (no camera calibration — see VehicleEvent.direction_deg's
 # docstring), so these are relative/tunable-per-deployment, not physical

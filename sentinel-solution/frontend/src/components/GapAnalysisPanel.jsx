@@ -50,6 +50,8 @@ export default function GapAnalysisPanel({ onRefresh }) {
       <Row label="Missing department tag" items={report.missing_department} tone="warn" />
       <Row label="Missing GIS coordinates" items={report.missing_gis_coordinates} tone="warn" />
       <Row label="Confirmed unhealthy" items={report.unhealthy} tone="bad" />
+      <Row label="Missing install date" items={report.missing_install_date} tone="warn" />
+      <Row label={`Ageing (installed >${report.ageing_threshold_years}y ago)`} items={report.ageing} tone="bad" />
 
       <h4>Cameras by department</h4>
       <ul className="gap-analysis__dept-list">

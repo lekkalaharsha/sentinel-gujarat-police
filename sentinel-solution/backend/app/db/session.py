@@ -37,6 +37,8 @@ _ADDITIVE_MIGRATIONS = [
     ("camera_registry", "is_restricted_zone", "BOOLEAN DEFAULT 0 NOT NULL"),
     ("camera_registry", "expected_direction_deg", "FLOAT"),
     ("alert", "alert_type", "VARCHAR DEFAULT 'watchlist' NOT NULL"),
+    ("camera_registry", "install_date", "DATETIME"),
+    ("camera_registry", "coverage_radius_m", "FLOAT"),
 ]
 
 

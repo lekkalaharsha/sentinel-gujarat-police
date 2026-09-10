@@ -25,11 +25,11 @@ Models 3/4 are documented roadmap, not built (STRATEGY.md).
 | Registry portal with GIS map view | ✅ Done | React + Leaflet, health-colour-coded (`frontend/`, Model 1 tab) |
 | Bulk + manual + API onboarding | ✅ Done | `POST /cameras`, `/cameras/bulk`, Registry Ops form |
 | Camera health / maintenance-status monitoring | ✅ Done | `is_healthy`/`last_seen_live_at` from real RTSP worker state |
-| Gap-analysis report for uncovered/ageing zones | ✅ Done (endpoint) / 📄 (sample report) | `GET /cameras/gap-analysis` — export a sample PDF for submission |
-| Role-based search/filter/export + metadata audit trail | ✅ Done (RBAC + department scope + export); 🟡 filter UI still thin | RBAC ✅; **department-scoped RBAC done 2026-09-05** (`api/auth.py`'s `department_scope`, registry-scoped only, not vehicle search — see code docstring); **CSV export done 2026-09-05** (`GET /cameras/export.csv`) |
+| Gap-analysis report for uncovered/ageing zones | ✅ Done | `GET /cameras/gap-analysis` + `GET /cameras/gap-analysis/export.pdf`; real sample PDF at `docs/assets/sample_gap_analysis_report.pdf`, generated against the live sandbox catalogue 2026-09-10 |
+| Role-based search/filter/export + metadata audit trail | ✅ Done | RBAC ✅; **department-scoped RBAC done 2026-09-05** (`api/auth.py`'s `department_scope`); **CSV export done 2026-09-05** (`GET /cameras/export.csv`); **backend search/filter query params done 2026-09-10** (`GET /cameras?department=&camera_type=&is_healthy=&live=&q=`, previously client-side-only/nonexistent); **camera-onboarding audit trail done 2026-09-10** (`CameraAuditLog` model, `GET /cameras/{id}/audit-log`, admin-only, records onboard vs. update per camera) |
 | Sample onboarded camera-metadata dataset | ✅ Done | 30 real sandbox cameras onboarded and confirmed live 2026-09-05 (`catalogue_size: 30`, all workers connected) |
 | `camera_type` field (PTZ/dome/fixed) | ✅ Done 2026-09-05 | `CameraRegistry.camera_type`, onboarding form + API + CSV export + JSON view |
-| Coverage-radius map layer, ageing-infrastructure tracking | ⛔ Not started | Point markers only, no install-date field (found 2026-09-05) |
+| Coverage-radius map layer, ageing-infrastructure tracking | ✅ Done 2026-09-10 | `CameraRegistry.install_date`/`coverage_radius_m` (additive migration); `MapView.jsx` renders a coverage-radius `Circle` per camera and a dashed marker outline for cameras installed more than `SENTINEL_CAMERA_AGEING_THRESHOLD_YEARS` (default 5) ago; gap-analysis JSON/PDF report `ageing`/`missing_install_date` alongside the existing gap categories |
 | CSV/report export endpoint | ✅ Done 2026-09-05 | `GET /cameras/export.csv`, department-scoped, never emits rtsp/whep credentials |
 | Registry API documentation | ✅ Done (auto) | FastAPI OpenAPI at `/docs` — reference it in the submission |
 
