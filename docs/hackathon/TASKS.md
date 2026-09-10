@@ -94,8 +94,27 @@ issues") before trusting this file if it's more than a day or two old.
       notice when applicable. Regression coverage added in
       `tests/test_vehicle_search.py`; full suite re-run, 47/47 passed.
       `npm run build`/`npm run lint` both clean, no new warnings.
-- [ ] Sample gap-analysis PDF export (endpoint exists, no exported sample
-      produced yet for the submission).
+- [x] **Gap-analysis PDF export — fixed 2026-09-10.** Added
+      `GET /cameras/gap-analysis/export.pdf` (`routes_cameras.py`),
+      reusing the same `_compute_gap_analysis` data as the existing JSON
+      endpoint (no second, independently-computed report) and rendering
+      via `reportlab` (added to `requirements.txt`, not previously a
+      dependency) — summary table, cameras-by-department breakdown, and
+      each gap category's camera-id list. Same department-scoping as the
+      JSON endpoint and the CSV export. `GapAnalysisPanel.jsx` got an
+      "Export PDF" button (`api.js`'s `downloadGapAnalysisPdf` — fetches
+      as a blob since the API key is a custom header, not a cookie, so a
+      plain `<a href>` can't authenticate). Regression coverage in
+      `tests/test_gap_analysis_pdf.py` (including a real bug caught by
+      the empty-department-breakdown test: `[header] + [rows] or
+      [fallback]`'s `or` never fires because concatenation is always
+      truthy — fixed with explicit parens before it shipped). A real
+      sample PDF was generated end-to-end against the live 30-camera
+      sandbox catalogue (not synthetic data) via a temporary,
+      immediately-revoked admin key and saved to
+      `docs/assets/sample_gap_analysis_report.pdf` for the submission.
+      Full backend suite re-run, 50/50 passed; `npm run
+      build`/`npm run lint` both clean.
 - [ ] Close the 3 documentation-honesty points from `MODULE_GAP_ANALYSIS.md`:
       multi-vendor claim wording ("designed for" vs. "demonstrated with"),
       private/commercial CCTV coverage (currently unaddressed), external-DB

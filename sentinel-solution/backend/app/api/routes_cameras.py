@@ -7,6 +7,10 @@ import io
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy.orm import Session
 
 from .. import config
@@ -118,16 +122,10 @@ def list_cameras(db: Session = Depends(get_db), principal: Principal = Depends(r
     ]
 
 
-@router.get("/gap-analysis")
-def gap_analysis(db: Session = Depends(get_db), principal: Principal = Depends(require_role("investigator"))):
-    """Model 1 explicitly requires a 'gap-analysis report' deliverable:
-    which cameras are known but not onboarded with metadata, which are
-    onboarded but not currently live, and department coverage — the
-    concrete gaps a real rollout would need to close next.
-
-    Department-scoped like list_cameras above: a non-admin key tied to a
-    department sees only that department's registered/missing/unhealthy
-    counts, not the whole state's."""
+def _compute_gap_analysis(db: Session, principal: Principal) -> dict:
+    """Shared by the JSON endpoint and the PDF export below so the two
+    never drift — the PDF is a rendering of the same numbers, not a
+    second, independently-computed report."""
     dept = department_scope(principal)
     live = catalogue.cameras  # full catalogue — needed to correctly tell whether THIS department's own cameras are live
     registered = {r.id: r for r in _registered_cameras(db, principal)}
@@ -157,6 +155,97 @@ def gap_analysis(db: Session = Depends(get_db), principal: Principal = Depends(r
         "unhealthy": unhealthy,
         "cameras_by_department": by_department,
     }
+
+
+@router.get("/gap-analysis")
+def gap_analysis(db: Session = Depends(get_db), principal: Principal = Depends(require_role("investigator"))):
+    """Model 1 explicitly requires a 'gap-analysis report' deliverable:
+    which cameras are known but not onboarded with metadata, which are
+    onboarded but not currently live, and department coverage — the
+    concrete gaps a real rollout would need to close next.
+
+    Department-scoped like list_cameras above: a non-admin key tied to a
+    department sees only that department's registered/missing/unhealthy
+    counts, not the whole state's."""
+    return _compute_gap_analysis(db, principal)
+
+
+@router.get("/gap-analysis/export.pdf")
+def gap_analysis_export_pdf(
+    db: Session = Depends(get_db), principal: Principal = Depends(require_role("investigator"))
+):
+    """Model 1's 'gap-analysis report' deliverable, as an actual exportable
+    document (found missing entirely — see TASKS.md P1) rather than just
+    the JSON `gap_analysis` endpoint consumed by `GapAnalysisPanel.jsx`.
+    Same data, same department scoping — this is a rendering, not a
+    second report."""
+    pdf_bytes = _render_gap_analysis_pdf(_compute_gap_analysis(db, principal), principal)
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=sentinel_gap_analysis.pdf"},
+    )
+
+
+def _render_gap_analysis_pdf(report: dict, principal: Principal) -> bytes:
+    """Split out from the route so tests can get the raw bytes directly
+    instead of reaching into a StreamingResponse's async body_iterator."""
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter, title="Sentinel Gap-Analysis Report")
+    styles = getSampleStyleSheet()
+    scope_note = f"Department scope: {department_scope(principal) or 'all (admin/unscoped)'}"
+    elements = [
+        Paragraph("Sentinel — Camera Registry Gap-Analysis Report", styles["Title"]),
+        Paragraph(f"Generated {dt.datetime.utcnow().isoformat()}Z · {scope_note}", styles["Normal"]),
+        Spacer(1, 16),
+    ]
+
+    summary_rows = [
+        ["Metric", "Count"],
+        ["Live cameras in catalogue", report["catalogue_size"]],
+        ["Registered in this scope", report["registered_size"]],
+        ["Live but not onboarded", len(report["live_not_onboarded"])],
+        ["Onboarded but not currently live", len(report["onboarded_not_live"])],
+        ["Missing department attribution", len(report["missing_department"])],
+        ["Missing GIS coordinates", len(report["missing_gis_coordinates"])],
+        ["Unhealthy", len(report["unhealthy"])],
+    ]
+    summary_table = Table(summary_rows, colWidths=[260, 100])
+    summary_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#9ca3af")),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+    ]))
+    elements += [summary_table, Spacer(1, 16)]
+
+    elements.append(Paragraph("Cameras by department", styles["Heading2"]))
+    dept_rows = [["Department", "Count"]] + (
+        [[dept, count] for dept, count in sorted(report["cameras_by_department"].items())]
+        or [["(none registered)", ""]]
+    )
+    dept_table = Table(dept_rows, colWidths=[260, 100])
+    dept_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#9ca3af")),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+    ]))
+    elements += [dept_table, Spacer(1, 16)]
+
+    def _id_list_section(title: str, ids: list[str]) -> None:
+        elements.append(Paragraph(title, styles["Heading2"]))
+        elements.append(Paragraph(", ".join(ids) if ids else "(none)", styles["Normal"]))
+        elements.append(Spacer(1, 12))
+
+    _id_list_section("Live but not onboarded", report["live_not_onboarded"])
+    _id_list_section("Onboarded but not currently live", report["onboarded_not_live"])
+    _id_list_section("Missing department attribution", report["missing_department"])
+    _id_list_section("Missing GIS coordinates", report["missing_gis_coordinates"])
+    _id_list_section("Unhealthy", report["unhealthy"])
+
+    doc.build(elements)
+    return buf.getvalue()
 
 
 class CameraOnboard(BaseModel):

@@ -37,6 +37,23 @@ export const api = {
   listCameras: () => request("/cameras"),
   getCamera: (id) => request(`/cameras/${id}`),
   gapAnalysis: () => request("/cameras/gap-analysis"),
+  // The API key lives in a custom header, not a cookie, so a plain <a href>
+  // download can't authenticate — fetch the PDF as a blob and trigger a
+  // client-side download instead.
+  downloadGapAnalysisPdf: async () => {
+    const apiKey = getApiKey();
+    const headers = {};
+    if (apiKey) headers["X-Sentinel-API-Key"] = apiKey;
+    const res = await fetch(`${API_BASE}/cameras/gap-analysis/export.pdf`, { headers });
+    if (!res.ok) throw new Error(`${res.status} failed to generate PDF`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "sentinel_gap_analysis.pdf";
+    a.click();
+    URL.revokeObjectURL(url);
+  },
   onboardCamera: (camera) =>
     request("/cameras", {
       method: "POST",

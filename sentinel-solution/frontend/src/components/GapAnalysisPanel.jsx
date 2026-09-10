@@ -8,6 +8,7 @@ import { api } from "../api";
 export default function GapAnalysisPanel({ onRefresh }) {
   const [report, setReport] = useState(null);
   const [error, setError] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
   async function load() {
     try {
@@ -15,6 +16,17 @@ export default function GapAnalysisPanel({ onRefresh }) {
       setError(null);
     } catch (err) {
       setError(err.message);
+    }
+  }
+
+  async function exportPdf() {
+    setExporting(true);
+    try {
+      await api.downloadGapAnalysisPdf();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -50,6 +62,9 @@ export default function GapAnalysisPanel({ onRefresh }) {
         {!Object.keys(report.cameras_by_department).length && <li className="gap-analysis__empty">No cameras onboarded yet.</li>}
       </ul>
       <button onClick={load} className="gap-analysis__refresh">Refresh</button>
+      <button onClick={exportPdf} disabled={exporting} className="gap-analysis__refresh">
+        {exporting ? "Exporting…" : "Export PDF"}
+      </button>
     </div>
   );
 }
