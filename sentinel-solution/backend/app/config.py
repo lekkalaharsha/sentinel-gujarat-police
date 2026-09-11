@@ -133,6 +133,56 @@ WRONG_WAY_MIN_SPEED_PX_S = float(os.environ.get("SENTINEL_WRONG_WAY_MIN_SPEED_PX
 # is_restricted_zone, to raise a stopped-in-restricted-zone alert.
 STOPPED_ZONE_DWELL_THRESHOLD_S = float(os.environ.get("SENTINEL_STOPPED_ZONE_DWELL_THRESHOLD_S", "30"))
 
+# Model 3 (VMS Federation): two `FederatedEvent` rows with the same plate
+# from different source_systems correlate if their observed_at timestamps
+# fall within this window. 300s is a starting default for a polled,
+# batch-style correlation pass (not real-time), not a spec-mandated value —
+# tune per deployment. See analytics/federation.py and routes_federation.py.
+FEDERATION_CORRELATION_WINDOW_S = float(os.environ.get("SENTINEL_FEDERATION_CORRELATION_WINDOW_S", "300"))
+
+# Model 3's System B — a real, independent, public dataset (NYC Open
+# Data's "Open Parking and Camera Violations"), NOT a second Gujarat
+# departmental VMS (none is available to federate against — see
+# docs/models/model-3-vms-federation/ARCHITECTURE.md). Path is relative to
+# the backend process's working directory by default, matching this
+# repo's other relative-path defaults (CROPS_DIR).
+NYC_OPEN_DATA_FIXTURE_PATH = os.environ.get(
+    "SENTINEL_NYC_OPEN_DATA_FIXTURE_PATH", "scripts/fixtures/nyc_open_parking_sample.csv"
+)
+
+# Model 3's System C — SYNTHETIC, hand-written partner sightings of plates
+# Sentinel really read. Systems A and B share no plates (different countries),
+# so without this the correlation engine can never run end-to-end against the
+# live DB. Loaded under source_system="demo_partner_vms" so it is self-labelling
+# everywhere it appears. Unset the var or delete the file to disable it — the
+# adapter is skipped when the path doesn't exist, same as the NYC fixture. See
+# scripts/fixtures/demo_partner_vms_seed.README.md.
+DEMO_PARTNER_FIXTURE_PATH = os.environ.get(
+    "SENTINEL_DEMO_PARTNER_FIXTURE_PATH", "scripts/fixtures/demo_partner_vms_seed.csv"
+)
+
+# How often the federation ingest loop polls both adapters (main.py). Both
+# sources are re-scanned in full each poll (the NYC fixture is static, and
+# Sentinel's own event volume is small at pilot scale) — ingest_all()'s
+# dedup-by-key logic makes repeated full scans idempotent, so this doesn't
+# create duplicate FederatedEvent rows.
+FEDERATION_INGEST_INTERVAL_S = float(os.environ.get("SENTINEL_FEDERATION_INGEST_INTERVAL_S", "120"))
+
+# Rate limiting (api/rate_limit.py): requests per API key (or client IP)
+# per 60s window, excluding /health and /live/* (high-frequency HLS
+# polling). Generous default for a pilot with a handful of keys — this
+# guards against runaway/abusive clients, not normal UI traffic.
+RATE_LIMIT_PER_MINUTE = int(os.environ.get("SENTINEL_RATE_LIMIT_PER_MINUTE", "600"))
+
+# ONVIF device discovery (streaming/onvif_discovery.py). Disabled by
+# default: the sandbox exposes plain RTSP with no ONVIF endpoint, so
+# probing it would just add a timeout delay to every catalogue refresh.
+# catalogue.py falls back to the sandbox catalogue if no device responds.
+ONVIF_DISCOVERY_ENABLED = os.environ.get("SENTINEL_ONVIF_ENABLED", "false").lower() == "true"
+ONVIF_USERNAME = os.environ.get("SENTINEL_ONVIF_USERNAME", "")
+ONVIF_PASSWORD = os.environ.get("SENTINEL_ONVIF_PASSWORD", "")
+ONVIF_PROBE_TIMEOUT_S = float(os.environ.get("SENTINEL_ONVIF_PROBE_TIMEOUT_S", "3"))
+
 # Recording-only scope: when set (comma-separated camera ids), restricts the
 # live catalogue to just this subset — used to record the own-feed demo
 # video against its actual 5-camera scenario without also surfacing the
