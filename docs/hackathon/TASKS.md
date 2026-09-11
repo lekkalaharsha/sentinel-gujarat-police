@@ -434,6 +434,137 @@ table created cleanly, no data loss. Full backend suite 53/53 passed;
       absent — stale relative to the actual codebase). 5 new tests
       (`test_rate_limit.py`); full backend suite 100/100 passing.
 
+## 2026-09-12 — evidence classification audit + demo readiness (done)
+
+**Truthful state of the evidence feature, stated explicitly per the audit
+below (do not claim more than this anywhere — deck, briefing, or demo
+script):**
+
+```
+Evidence classification:        IMPLEMENTED
+LEAD_ONLY UI export blocking:   IMPLEMENTED
+§63 evidence-package generation: NOT IMPLEMENTED
+```
+
+`evidence_class.py` audited line-by-line. One real gap found and fixed: a
+whitespace-only plate string is truthy in Python, so `classify("   ", ...)`
+returned CONFIRMED before this fix. Unreachable through the real pipeline
+today (`anpr.py`'s `PLATE_PATTERN.fullmatch()` already rejects it), but the
+function is the single gate deciding exportability and must not depend on
+that upstream invariant holding forever — hardened to `plate and
+plate.strip()`. 5 new boundary tests (17 total for this module), including
+one that locks the classifier's signature to `(plate, link_method)` only —
+structural proof a high fused UI score can never influence the class,
+because the function cannot see it.
+
+### Rule table (deterministic, exhaustive over all 4 real `link_method` values)
+
+| plate | link_method | class | rationale |
+|---|---|---|---|
+| any non-blank string | any | CONFIRMED | plate already passed `PLATE_PATTERN` + `PLATE_MIN_CONFIDENCE` upstream |
+| None / empty / whitespace | `plate_continuation` | PROBABLE | same within-camera track as a sighting that read the plate |
+| None / empty / whitespace | `plate_upgrade` | PROBABLE | same, retroactive upgrade case |
+| None / empty / whitespace | `appearance_match` | LEAD_ONLY | appearance embedding only — 41.87% FPR measured |
+| None / empty / whitespace | `new_identity` | LEAD_ONLY | no plate, no link — anonymous |
+| None / empty / whitespace | unrecognised/None | LEAD_ONLY | fail conservative — never upgrade on an unknown case |
+
+Only `CONFIRMED` is in `EXPORTABLE_CLASSES`. `PROBABLE` is deliberately
+excluded too.
+
+## 2026-09-12 — jury-ready UI rework + evidence tiering (done)
+
+**Evidence classification is now real and enforced** (`analytics/evidence_class.py`).
+Derived from persisted provenance — `plate` and `link_method` — so it needs no
+migration and a badge can never disagree with the row it labels:
+
+- `CONFIRMED` — this sighting read and validated its own plate.
+- `PROBABLE` — no plate here, but linked by within-camera track continuity
+  from a sighting that did read one (`plate_continuation` / `plate_upgrade`).
+- `LEAD_ONLY` — linked by appearance only, or standalone anonymous. Not evidence.
+
+Only `CONFIRMED` is exportable. `PROBABLE` is deliberately excluded too: an
+export is where a hedge stops being visible. `/vehicle/{plate}/history` and
+`/vehicle/recent` now return `evidence_class`, `evidence_class_reason` and
+`exportable_as_evidence`; the frontend disables its export control from that
+field rather than re-deriving the rule. 12 new tests.
+
+**Measured over the real database:** 6 CONFIRMED, 12,251 LEAD_ONLY out of
+12,257 events — an independent reproduction of DECISION_REVIEW_2026-09-11.md's
+central finding. Identity `GJ01AB1234` shows the demo shape exactly: five
+sightings, one CONFIRMED (cam03, where the plate was read), four leads.
+
+**Navigation regrouped** by operator intent (Operations / Investigations /
+Camera Intelligence / Evidence / Integrations / System) instead of leaking our
+internal Model 1/2/3 structure into the product.
+
+**New screens, all real-endpoint backed:** Camera Health (operational state
+only — no fabricated packet-loss/latency/uptime figures, because nothing
+measures them), Coverage & Gaps, Connected Systems (states plainly that
+department labels behind one gateway are *not* two systems — CLAUDE.md §10),
+Watchlist & Alerts combined, User Administration (`/auth/api-keys`, minted key
+shown once).
+
+**Three destinations ship an honest "not yet implemented" screen** naming the
+exact backend work required, rather than being hidden or faked: Investigation
+Cases, ANPR Readiness, Evidence Export (§63). Wording throughout is
+"§63-oriented", never "court admissible".
+
+Verified: 119/119 backend tests, `npm run lint` (no new warnings), `npm run
+build` clean, and every new endpoint exercised over real HTTP against a running
+`app.main` with the real `sentinel.db`.
+
+### Government-feed readiness, checked 2026-09-12
+
+| Item | State |
+|---|---|
+| Sandbox catalogue access | **PASS** — 30 cameras, HLS + RTSP URLs present |
+| HLS playback | **PASS** — cam06 playlist 200, valid `#EXTM3U`, 14,690 segments |
+| Searchable event / movement history | **PASS** — verified over HTTP |
+| Persisted camera ID + timestamp | **PASS** |
+| Watchlist correlation + alerts | **PASS** |
+| Timestamped output report | **PASS** — gap-analysis and federation PDFs |
+| Real ANPR output | **PASS (historic)** — `data/anpr_scan/20260905T112430Z`, 7 reads |
+| GIS mapping | **PARTIAL** — 22 of 30 cameras have coordinates; the sandbox
+  catalogue supplies none, they come from our registry |
+| RTSP analytics producing new events | **PARTIAL** — venv rebuilt to Python
+  3.11 (was 3.12, which had no `cp312` wheel for the pinned `onnx==1.14.1`
+  and would have needed a `cmake` source build). ML deps installing;
+  real-model verification proceeding on a second machine |
+| Full government-feed demo session | **RETRACTED "externally blocked"
+  status — see below** |
+
+### Government-feed blocker retraction, 2026-09-12
+
+**The prior "externally blocked" status was stale and imprecise.** It traced
+to one undated 2026-09-05 remark — "the hackathon's own sandbox is still
+being fixed on their end" — with no named endpoint, no error, and no
+re-check in a week. This session verified directly against the live sandbox
+today: catalogue login succeeds, 30 cameras returned, and `cam06`'s HLS
+playlist returns 200 with a valid `#EXTM3U` header and 14,690 segments. The
+premise of the blocker does not hold today.
+
+**Separately, and more importantly: `HACKATHON_DETAILS.md` §12 states the
+sandbox itself already qualifies as "Government-Provided CCTV Feed."**
+Verbatim: *"~12 hours of CCTV footage from each of 30+ cameras, across 5
+departments: Health, Police, GSRTC, Panchayat, Municipal Corporation... Real
+footage, no synthetic data... served as simulated live video."* §"Phase 1 –
+Sandbox Round" vs "Phase 2 – Production Round" confirms this sandbox is the
+intended Phase 1 government feed; a separate production environment exists
+only for the 6 Grand Finale qualifiers. The project's own prior framing — a
+second, distinct "government feed" recording session, gated on the
+organizers — was a misreading of the spec, not a real technical blocker.
+
+**One genuine, narrow gap found and fixed:** Q33 requires "output report
+showing detected vehicles/plates with timestamps"; no such export existed
+(`ReportsView.jsx` had gap-analysis, audit-log, and watchlist reports only).
+Added a "Vehicle detections report" entry reusing the existing
+`/vehicle/recent` endpoint and `download()` pattern — zero new backend code.
+
+**Status: READY NOW** for everything except a fresh live-ML detection
+moment, which depends on the ML runtime (being verified on a second
+machine, see above) rather than on any organizer dependency.
+
+
 ## Deliberately not doing (see STRATEGY.md's OUT list — don't silently build these)
 
 Face recognition, fingerprint/biometric integration, full 80k-camera
