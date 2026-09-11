@@ -19,6 +19,12 @@ import ReportsView from "./components/ReportsView";
 import SystemHealthView from "./components/SystemHealthView";
 import ArchitectureView from "./components/ArchitectureView";
 import SettingsView from "./components/SettingsView";
+import CameraHealthView from "./components/CameraHealthView";
+import CoverageGapsView from "./components/CoverageGapsView";
+import ConnectedSystemsView from "./components/ConnectedSystemsView";
+import MonitoringView from "./components/MonitoringView";
+import UserAdminView from "./components/UserAdminView";
+import NotImplemented from "./components/NotImplemented";
 import "./App.css";
 
 const CAMERA_POLL_MS = 15000;
@@ -142,16 +148,65 @@ export default function App() {
             )}
             {view === "camera" && <LiveCameraView camera={selectedCamera} />}
             {view === "grid" && <CameraGridView cameras={cameras} />}
+            {view === "monitoring" && <MonitoringView />}
             {view === "alerts" && <AlertsView />}
             {view === "watchlist" && <WatchlistView />}
             {view === "federation" && <FederationDashboard onOpenPlate={openVehicle} />}
             {view === "search" && <SearchView onOpenPlate={openVehicle} />}
-            {view === "investigations" && <InvestigationsView />}
+            {view === "audit" && <InvestigationsView />}
             {view === "evidence" && <EvidenceView />}
             {view === "reports" && <ReportsView />}
-            {view === "health" && <SystemHealthView health={health} gapAnalysis={gapAnalysis} />}
+            {view === "health" && <CameraHealthView cameras={cameras} onOpenCamera={openCamera} />}
+            {view === "coverage" && <CoverageGapsView cameras={cameras} />}
+            {view === "systems" && <ConnectedSystemsView cameras={cameras} health={health} />}
+            {view === "users" && <UserAdminView />}
+            {view === "runtime" && <SystemHealthView health={health} gapAnalysis={gapAnalysis} />}
             {view === "architecture" && <ArchitectureView />}
             {view === "settings" && <SettingsView />}
+            {view === "cases" && (
+              <NotImplemented
+                title="Investigation Cases"
+                sub="Group sightings, alerts and evidence under a named case"
+                what="Sentinel already requires a case ID and a stated purpose on every vehicle lookup, and records both in the audit trail — but there is no case entity yet, so cases cannot be listed, reopened, or used to group evidence. Building the screen without that backend would mean inventing case records, which this project does not do."
+                requires={[
+                  "A Case model plus an additive migration (id, title, owner, status, created_at)",
+                  "Linking the existing audit-log purpose/case_id entries to it",
+                  "Case-scoped authorization so an investigator sees only their own cases",
+                ]}
+                related={{ view: "audit", label: "Audit & Governance" }}
+                onNavigate={setView}
+              />
+            )}
+            {view === "anpr" && (
+              <NotImplemented
+                title="ANPR Readiness"
+                sub="Whether a camera is physically capable of reading a plate — separate from whether it is online"
+                what="This is the highest-value missing screen. Our own cam01 produced 0 plate reads from 62 correctly-localised plates because the plate patch is roughly 25x16 px, against a requirement of at least 120x20 px that four independent vendors agree on. That is a provable geometric finding about the camera, not a failure of the OCR — but the backend does not yet measure or persist plate pixel dimensions, so there is nothing truthful to display."
+                requires={[
+                  "Persist plate bounding-box width/height per localisation attempt",
+                  "Per-camera OCR yield: localisations attempted vs pattern-valid reads",
+                  "A CAPABLE / MARGINAL / UNSUITABLE classifier over those measures, with stated thresholds",
+                  "A remediation hint (re-angle, zoom, reposition, dedicated ANPR camera)",
+                ]}
+                related={{ view: "health", label: "Camera Health" }}
+                onNavigate={setView}
+              />
+            )}
+            {view === "export" && (
+              <NotImplemented
+                title="Evidence Export"
+                sub="Section 63-oriented evidence package for downstream legal review"
+                what="Since 1 July 2024 electronic evidence in India is governed by Section 63 of the Bharatiya Sakshya Adhiniyam, which requires a dual-signed certificate (custodian and expert) carrying a cryptographic hash of the record and a description of how it was produced. Sentinel stores evidence crops with no hash and does not stamp model or software versions per event, so no such package can honestly be produced yet. Evidence Records shows what is persisted today."
+                requires={[
+                  "SHA-256 computed at write time over the crop and metadata, stored alongside it",
+                  "Model and software version stamped on each event at production time",
+                  "A machine-generated production-method statement",
+                  "A printable certificate with Part A / Part B signature blocks",
+                ]}
+                related={{ view: "evidence", label: "Evidence Records" }}
+                onNavigate={setView}
+              />
+            )}
           </div>
         </div>
       </div>

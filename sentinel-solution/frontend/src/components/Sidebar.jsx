@@ -4,34 +4,48 @@ import {
   IconSettings, IconShield,
 } from "../icons";
 
-// IconLayers doubles as the Model 3 federation icon below (no dedicated
-// icon exists yet, and this repo's icon set is deliberately small — see
-// icons.jsx) — matches the reuse-over-new-abstraction convention already
-// used for "Architecture" above.
-
+// Grouped by what an operator is trying to DO, not by which model of the
+// hackathon spec a feature belongs to — the previous grouping leaked our
+// internal Model 1/2/3 structure into an operational product.
+//
+// `pending: true` marks a destination whose backend does not exist yet. It
+// renders an honest "not yet implemented" screen rather than being hidden,
+// because a jury asking "where is evidence export?" should get a truthful
+// answer instead of a missing menu entry.
 const NAV = [
   { group: "Operations", items: [
-    { id: "command", label: "Command Center", icon: IconGrid },
-    { id: "livemap", label: "Live Map", icon: IconMap },
-    { id: "graph", label: "Geo-Temporal Graph", icon: IconGraph, core: true },
-    { id: "vehicle", label: "Vehicle Intelligence", icon: IconCar },
-    { id: "network", label: "Camera Network", icon: IconCamera },
-    { id: "grid", label: "Camera Grid", icon: IconLayers },
+    { id: "command", label: "Command Centre", icon: IconGrid },
+    { id: "camera", label: "Live Monitoring", icon: IconCamera },
+    { id: "grid", label: "Video Wall", icon: IconLayers },
+    { id: "livemap", label: "State Map", icon: IconMap },
   ]},
-  { group: "Monitoring", items: [
-    { id: "alerts", label: "Alerts", icon: IconAlert },
-    { id: "watchlist", label: "Watchlist", icon: IconEye },
-    { id: "federation", label: "Federation (Model 3)", icon: IconLayers },
+  { group: "Investigations", items: [
+    { id: "vehicle", label: "Vehicle Search", icon: IconCar },
+    { id: "graph", label: "Observation Trail", icon: IconGraph, core: true },
+    { id: "monitoring", label: "Watchlist & Alerts", icon: IconAlert },
+    { id: "search", label: "Attribute Search", icon: IconSearch },
+    { id: "cases", label: "Investigation Cases", icon: IconFolder, pending: true },
   ]},
-  { group: "Investigation", items: [
-    { id: "search", label: "Search", icon: IconSearch },
-    { id: "investigations", label: "Investigations", icon: IconFolder },
-    { id: "evidence", label: "Evidence", icon: IconEvidence },
-    { id: "reports", label: "Reports", icon: IconReport },
+  { group: "Camera Intelligence", items: [
+    { id: "network", label: "Camera Registry", icon: IconCamera },
+    { id: "health", label: "Camera Health", icon: IconPulse },
+    { id: "coverage", label: "Coverage & Gaps", icon: IconMap },
+    { id: "anpr", label: "ANPR Readiness", icon: IconEye, pending: true },
+  ]},
+  { group: "Evidence", items: [
+    { id: "evidence", label: "Evidence Records", icon: IconEvidence },
+    { id: "export", label: "Evidence Export", icon: IconReport, pending: true },
+  ]},
+  { group: "Integrations", items: [
+    { id: "systems", label: "Connected Systems", icon: IconLayers },
+    { id: "federation", label: "Integration Monitor", icon: IconGraph },
   ]},
   { group: "System", items: [
-    { id: "health", label: "System Health", icon: IconPulse },
+    { id: "audit", label: "Audit & Governance", icon: IconShield },
+    { id: "users", label: "User Administration", icon: IconFolder },
+    { id: "reports", label: "Reports", icon: IconReport },
     { id: "architecture", label: "Architecture", icon: IconLayers },
+    { id: "runtime", label: "Runtime Health", icon: IconPulse },
     { id: "settings", label: "Settings", icon: IconSettings },
   ]},
 ];
@@ -43,7 +57,7 @@ export default function Sidebar({ view, onNavigate, coverage }) {
         <div className="brand-mark"><IconShield width={16} height={16} /></div>
         <div>
           <div className="brand-name">SENTINEL</div>
-          <div className="brand-tag">Geo-Temporal Intel</div>
+          <div className="brand-tag">Gujarat Police</div>
         </div>
       </div>
 
@@ -61,6 +75,7 @@ export default function Sidebar({ view, onNavigate, coverage }) {
                 <Icon />
                 {item.label}
                 {item.core && <span className="core-tag">CORE</span>}
+                {item.pending && <span className="core-tag pending-tag">SOON</span>}
               </div>
             );
           })}
@@ -68,12 +83,13 @@ export default function Sidebar({ view, onNavigate, coverage }) {
       ))}
 
       <div className="coverage-box">
-        <div className="coverage-title">Gujarat coverage</div>
-        <div className="coverage-row"><span>Cameras known</span><b>{coverage?.catalogue_size ?? "—"}</b></div>
+        <div className="coverage-title">Camera estate</div>
+        <div className="coverage-row"><span>In catalogue</span><b>{coverage?.catalogue_size ?? "—"}</b></div>
         <div className="coverage-row"><span>Onboarded</span><b>{coverage?.registered_size ?? "—"}</b></div>
-        <div className="coverage-row"><span>Mode</span><b style={{ color: "var(--confirmed)" }}>Unified</b></div>
       </div>
-      <div className="sidebar-foot">Sentinel — Model 1 + 2 hybrid<br />Gujarat Police Innovation Challenge 2026</div>
+      <div className="sidebar-foot">
+        Interoperability &amp; evidence layer<br />Gujarat Police Innovation Challenge 2026
+      </div>
     </nav>
   );
 }

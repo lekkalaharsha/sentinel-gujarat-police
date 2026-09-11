@@ -107,6 +107,13 @@ export const api = {
     if (!res.ok) throw new Error(`${res.status}`);
     return URL.createObjectURL(await res.blob());
   },
+  listApiKeys: () => request("/auth/api-keys"),
+  createApiKey: (userId, role, department) =>
+    request("/auth/api-keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId, role, department: department || null }),
+    }),
   auditLog: (limit = 200) => request(`/admin/audit-log?limit=${limit}`),
   retentionPolicy: () => request("/admin/retention-policy"),
   triggerPurge: () => request("/admin/purge", { method: "POST" }),
