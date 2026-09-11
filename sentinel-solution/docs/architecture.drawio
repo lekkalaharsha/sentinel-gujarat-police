@@ -6,8 +6,8 @@
         <mxCell id="1" parent="0" />
 
         <!-- ============ TITLE ============ -->
-        <mxCell id="title" value="Sentinel — System Architecture (Model 1 + Model 2 hybrid)" style="text;html=1;fontSize=22;fontStyle=1;align=center;" vertex="1" parent="1">
-          <mxGeometry x="40" y="10" width="900" height="30" as="geometry" />
+        <mxCell id="title" value="Sentinel — System Architecture (Model 1 + 2 hybrid, Model 3 federation)" style="text;html=1;fontSize=22;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="10" width="1100" height="30" as="geometry" />
         </mxCell>
 
         <!-- ============ EXTERNAL / DEPARTMENTAL LAYER ============ -->
@@ -29,7 +29,7 @@
 
         <!-- ============ BACKEND CONTAINER ============ -->
         <mxCell id="lay_backend" value="Sentinel Backend (FastAPI, single-node pilot → PostgreSQL/Kafka at regional+ scale)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaffea;strokeColor=#2d7d2d;fontSize=13;fontStyle=1;verticalAlign=top;align=left;spacingLeft=8;spacingTop=6;" vertex="1" parent="1">
-          <mxGeometry x="40" y="160" width="1560" height="620" as="geometry" />
+          <mxGeometry x="40" y="160" width="1560" height="740" as="geometry" />
         </mxCell>
 
         <!-- Ingest row -->
@@ -41,6 +41,9 @@
         </mxCell>
         <mxCell id="be_hlsproxy" value="HLS Proxy (routes_stream.py)&#10;auth relay + SSRF-guarded segment/&#10;encryption-key fetch" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
           <mxGeometry x="650" y="200" width="300" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="be_onvif" value="ONVIF Discovery&#10;(WS-Discovery + Media GetStreamUri;&#10;disabled by default, sandbox-catalogue fallback)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="980" y="200" width="330" height="55" as="geometry" />
         </mxCell>
 
         <!-- Analytics pipeline row -->
@@ -91,32 +94,46 @@
           <mxGeometry x="1050" y="440" width="530" height="80" as="geometry" />
         </mxCell>
 
+        <!-- Model 3: VMS Federation row (bonus/hybrid scope, not mandatory) -->
+        <mxCell id="be_fed_adapters" value="VMSAdapter Protocol (Model 3)&#10;SentinelAdapter + NycOpenDataAdapter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="70" y="540" width="360" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="be_fed_event" value="FederatedEvent table&#10;(polled ingest, not Kafka)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="460" y="540" width="280" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="be_fed_corr" value="Correlation Engine&#10;GET /federation/correlations(.pdf)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="770" y="540" width="360" height="55" as="geometry" />
+        </mxCell>
+
         <!-- Retention/reconcile -->
         <mxCell id="be_retention" value="Retention sweep (DPDP storage limitation)&#10;+ health/reconcile loop (camera up/down)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;dashed=1;" vertex="1" parent="1">
-          <mxGeometry x="70" y="540" width="600" height="45" as="geometry" />
+          <mxGeometry x="70" y="630" width="600" height="45" as="geometry" />
         </mxCell>
 
         <!-- ============ FRONTEND CONTAINER ============ -->
         <mxCell id="lay_frontend" value="Sentinel Frontend (React 19 + Vite)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6f2ff;strokeColor=#3366cc;fontSize=13;fontStyle=1;verticalAlign=top;align=left;spacingLeft=8;spacingTop=6;" vertex="1" parent="1">
-          <mxGeometry x="40" y="820" width="1560" height="180" as="geometry" />
+          <mxGeometry x="40" y="940" width="1560" height="180" as="geometry" />
         </mxCell>
         <mxCell id="fe_shell" value="Sidebar / Topbar shell&#10;(API key entry, view nav)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe2f3;strokeColor=#3d85c6;" vertex="1" parent="1">
-          <mxGeometry x="70" y="860" width="260" height="50" as="geometry" />
+          <mxGeometry x="70" y="980" width="230" height="50" as="geometry" />
         </mxCell>
         <mxCell id="fe_live" value="Camera Grid / Live Map /&#10;Camera Network (hls.js playback)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe2f3;strokeColor=#3d85c6;" vertex="1" parent="1">
-          <mxGeometry x="350" y="860" width="300" height="50" as="geometry" />
+          <mxGeometry x="320" y="980" width="270" height="50" as="geometry" />
         </mxCell>
         <mxCell id="fe_vehicle" value="Search / Vehicle Intelligence&#10;(timeline, explainability panel,&#10;link_method + link_score trail)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe2f3;strokeColor=#3d85c6;" vertex="1" parent="1">
-          <mxGeometry x="670" y="860" width="330" height="50" as="geometry" />
+          <mxGeometry x="610" y="980" width="300" height="50" as="geometry" />
         </mxCell>
         <mxCell id="fe_ops" value="Investigations / Watchlist /&#10;Alerts / Evidence / Reports" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe2f3;strokeColor=#3d85c6;" vertex="1" parent="1">
-          <mxGeometry x="1020" y="860" width="300" height="50" as="geometry" />
+          <mxGeometry x="930" y="980" width="270" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="fe_federation" value="Federation Dashboard&#10;(Model 3)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="980" width="180" height="50" as="geometry" />
         </mxCell>
         <mxCell id="fe_admin" value="System Health / Settings /&#10;Architecture / Command Center" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe2f3;strokeColor=#3d85c6;" vertex="1" parent="1">
-          <mxGeometry x="1340" y="860" width="230" height="50" as="geometry" />
+          <mxGeometry x="1420" y="980" width="150" height="50" as="geometry" />
         </mxCell>
         <mxCell id="fe_note" value="All views call the backend via X-Sentinel-API-Key header (api.js) — CDN/RTSP credentials never reach the browser." style="text;html=1;fontSize=11;fontStyle=2;align=left;" vertex="1" parent="1">
-          <mxGeometry x="70" y="920" width="900" height="30" as="geometry" />
+          <mxGeometry x="70" y="1040" width="900" height="30" as="geometry" />
         </mxCell>
 
         <!-- ============ EDGES ============ -->
@@ -158,6 +175,14 @@
         <mxCell id="e28" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="fe_shell" target="fe_vehicle"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="e29" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="fe_shell" target="fe_ops"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="e30" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="fe_shell" target="fe_admin"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- ONVIF + Model 3 federation edges -->
+        <mxCell id="e31" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;" edge="1" parent="1" source="be_onvif" target="be_streammgr"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e32" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;" edge="1" parent="1" source="be_db" target="be_fed_adapters"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e33" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_fed_adapters" target="be_fed_event"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e34" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_fed_event" target="be_fed_corr"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e35" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="be_fed_corr" target="be_api"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e36" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="fe_shell" target="fe_federation"><mxGeometry relative="1" as="geometry" /></mxCell>
 
       </root>
     </mxGraphModel>

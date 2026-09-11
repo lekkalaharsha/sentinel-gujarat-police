@@ -574,7 +574,7 @@ s = content_slide("Scalability", "From ~30-camera pilot to ~80,000 cameras state
 left = [
     ("Compute tiers", "Edge (RTSP + inference) → Regional (Re-ID, media relay, NETRAM-aligned) → Central (identity correlation, watchlist, RBAC, GIS)"),
     ("GPU sizing", "~20 cameras/GPU (mobile-scale models) → ~4,000 GPU-class edge units at full 80,000-camera build-out"),
-    ("Bandwidth math", "Raw video centrally: ~160 Gbps / ~1.7 PB/day — not credible. Structured events instead: ~640 Mbps sustained — three orders of magnitude smaller"),
+    ("Bandwidth math", "Raw video centrally: ~160 Gbps / ~1.7 PB/day — not credible. Structured events instead: ~640 Mbps sustained — ~250x smaller"),
 ]
 right = [
     ("Storage tiers", "Hot (7–15 days, PostgreSQL/PostGIS) → Warm (90 days–1 year, partitioned/TimescaleDB) → Cold (compliance archive, object storage — not raw video by default)"),

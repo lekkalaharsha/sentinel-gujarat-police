@@ -149,6 +149,16 @@ class CatalogueClient:
         return self._logged_in
 
     def refresh(self) -> Dict[str, CameraInfo]:
+        if config.ONVIF_DISCOVERY_ENABLED:
+            onvif_cameras = self._try_onvif_discovery()
+            if onvif_cameras:
+                with self._lock:
+                    self._cameras = onvif_cameras
+                    self._last_refresh = time.time()
+                logger.info("ONVIF discovery found %d camera(s) this refresh.", len(onvif_cameras))
+                return self.cameras
+            logger.info("ONVIF discovery found no devices — falling back to the sandbox catalogue.")
+
         if not self._logged_in and not self._login():
             return self.cameras
 
@@ -184,6 +194,23 @@ class CatalogueClient:
             self._last_refresh = time.time()
         logger.info("catalogue refreshed: %d cameras (%d live)", len(cameras), sum(c.live for c in cameras.values()))
         return cameras
+
+    def _try_onvif_discovery(self) -> Dict[str, CameraInfo]:
+        """Never raises — any failure degrades to an empty dict so
+        refresh() falls back to the sandbox HTTP catalogue."""
+        # Lazy import: onvif_discovery.py imports CameraInfo from here,
+        # so a top-level import would be circular.
+        from .streaming import onvif_discovery
+
+        try:
+            return onvif_discovery.discover(
+                username=config.ONVIF_USERNAME or None,
+                password=config.ONVIF_PASSWORD or None,
+                probe_timeout_s=config.ONVIF_PROBE_TIMEOUT_S,
+            )
+        except Exception as exc:  # noqa: BLE001 — discovery must never crash a catalogue refresh
+            logger.warning("ONVIF discovery failed (%s) — falling back to sandbox catalogue.", exc)
+            return {}
 
     def get(self, camera_id: str) -> Optional[CameraInfo]:
         with self._lock:

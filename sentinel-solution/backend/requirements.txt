@@ -4,6 +4,8 @@ sqlalchemy==2.0.35
 requests==2.32.3
 opencv-python==4.10.0.84
 pydantic==2.9.2
+reportlab==4.2.5
+defusedxml==0.7.1
 
 # Regression test suite (backend/tests/ — SWE-4). Self-contained, no camera
 # access or ML deps needed. Run from backend/: `python -m pytest tests -v`.

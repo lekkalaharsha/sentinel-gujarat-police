@@ -59,8 +59,12 @@ class Track:
     last_pts_ms: float
     first_pts_ms: float
     vehicle_type: str
-    # plate -> summed confidence across all reads that produced this plate
-    plate_votes: Dict[str, float] = field(default_factory=dict)
+    # Raw (plate_string, confidence) per frame-read, in observation order —
+    # kept raw (not pre-bucketed by exact string) so consensus_plate() can
+    # vote per character position, not just per whole string. See its
+    # docstring for why: an exact-string majority vote splits a vehicle's
+    # votes across every OCR variant a single misread character produces.
+    plate_reads: List[Tuple[str, float]] = field(default_factory=list)
     best_attrs: Optional[VehicleAttributes] = None
     best_attrs_confidence: float = -1.0
     best_crop: Optional[np.ndarray] = None  # crop from the highest-confidence detection, for Re-ID
@@ -93,19 +97,84 @@ class Track:
             self.best_attrs_confidence = detection_confidence
             self.best_crop = crop
         if plate_result:
-            plate, conf = plate_result
-            self.plate_votes[plate] = self.plate_votes.get(plate, 0.0) + conf
+            self.plate_reads.append(plate_result)
 
     def consensus_plate(self) -> Tuple[Optional[str], Optional[float]]:
-        if not self.plate_votes:
+        """Position-weighted character vote, not exact-string majority vote.
+
+        Exact-string voting has a real failure mode on noisy real footage:
+        one single-character misread (e.g. `GJ01RP6128` read once as
+        `GU01RP6128`) used to create a second, distinct "candidate" that
+        siphons votes away from the correct plate — harmless when the
+        correct plate still has a comfortable majority (as in the real
+        cam06 case this locks in as a regression test), but a genuinely
+        worse split (more disagreeing frames, or several different
+        single-character misreads) can dilute every candidate below
+        `PLATE_MIN_CONFIDENCE` even though most reads agree on most
+        characters. Voting per character position instead means agreeing
+        positions build unanimous support regardless of where OTHER
+        positions disagree, and the reconstructed plate can be a string
+        that was never literally one of the raw OCR reads — don't assume
+        otherwise downstream.
+
+        Reads are grouped by length first: position voting is only
+        meaningful within same-length reads (a different-length read is
+        either a different plate, or an OCR miss that dropped/added a
+        character — this pass doesn't attempt edit-distance alignment
+        across lengths, per TASKS.md's documented scope). The length-group
+        with the most total confidence wins, generalizing the old
+        algorithm's "highest vote mass wins" selection from exact strings
+        to length-groups.
+
+        Known, tested, unmitigated limitation: if `plate_reads` ever mixed
+        sightings of two different vehicles (e.g. an IOU-overlap
+        association merging a second car into this track), the vote could
+        return a hybrid plate nobody's camera actually saw — see
+        test_tracker.py's contamination test. No character-agreement rule
+        can fix this without also breaking the legitimate same-vehicle
+        severe-misread case (isolates_higher_vote_share /
+        confidence_is_vote_share_not_count both require outvoting a
+        majority-disagreeing single stray read). A real fix needs signal
+        outside the plate string — an appearance-embedding check at
+        association time — not attempted here (see TASKS.md).
+        """
+        if not self.plate_reads:
             return None, None
-        plate = max(self.plate_votes, key=self.plate_votes.get)
-        total_votes = sum(self.plate_votes.values())
-        # Confidence = this plate's share of total vote mass, scaled by how
-        # strong its own reads were — a single 0.95 read isn't diluted by
-        # one stray misread of a different candidate.
-        confidence = min(1.0, self.plate_votes[plate] / max(total_votes, self.plate_votes[plate]))
-        return plate, round(confidence, 2)
+
+        groups: Dict[int, List[Tuple[str, float]]] = {}
+        for plate, conf in self.plate_reads:
+            groups.setdefault(len(plate), []).append((plate, conf))
+
+        winning_length = max(groups, key=lambda length: sum(c for _, c in groups[length]))
+        group = groups[winning_length]
+        total = sum(c for _, c in group)
+
+        chars: List[str] = []
+        min_share = 1.0
+        for pos in range(winning_length):
+            votes: Dict[str, float] = {}
+            first_seen_order: List[str] = []
+            for plate, conf in group:
+                ch = plate[pos]
+                if ch not in votes:
+                    votes[ch] = 0.0
+                    first_seen_order.append(ch)
+                votes[ch] += conf
+            # max() over a list returns the FIRST max on a tie (iterates in
+            # first_seen_order) — matches the old exact-string tie-break
+            # ("first-inserted wins", pinned by
+            # test_consensus_plate_confidence_is_vote_share_not_count).
+            best_char = max(first_seen_order, key=lambda c: votes[c])
+            min_share = min(min_share, votes[best_char] / total)
+            chars.append(best_char)
+
+        # Confidence is the WEAKEST position's agreement, not an average —
+        # a plate with one badly-split character position is only as
+        # trustworthy as that position, same bottleneck semantics as the
+        # old algorithm (which this reproduces exactly when reads share one
+        # length, since a single differing position IS the old algorithm's
+        # winning-plate vote share in that case).
+        return "".join(chars), round(min(1.0, min_share), 2)
 
     def motion_attributes(self) -> Tuple[Optional[float], Optional[float], Optional[float]]:
         """Returns (dwell_time_s, speed_px_per_s, direction_deg) derived from

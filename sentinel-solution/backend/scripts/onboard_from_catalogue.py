@@ -116,13 +116,31 @@ def main():
         print("catalogue is empty — check SENTINEL_ACCESS_TOKEN is set and the sandbox is reachable", file=sys.stderr)
         sys.exit(1)
 
+    # Merge with whatever's already registered rather than blindly overwrite:
+    # a camera already carrying a manually-verified department/GIS pin (e.g.
+    # cam01-05, set by earlier real onboarding work) must not get clobbered
+    # back to None just because THIS run's keyword heuristic failed to guess
+    # anything for it — that would be a real regression, not an upsert.
+    # Only in --dry-run mode is this skipped (no key required to preview).
+    existing_by_id: dict[str, dict] = {}
+    if not args.dry_run:
+        resp = requests.get(
+            f"{args.api_base}/cameras", headers={"X-Sentinel-API-Key": admin_key}, timeout=30
+        )
+        resp.raise_for_status()
+        existing_by_id = {c["id"]: c for c in resp.json()}
+
     payload = []
     unassigned = []
     no_coords = []
     for cam_id, cam in cameras.items():
         source_name = cam.raw.get("name") or cam.location
-        department = infer_department(source_name)
-        lat, lon = infer_coords(source_name)
+        inferred_department = infer_department(source_name)
+        inferred_lat, inferred_lon = infer_coords(source_name)
+        existing = existing_by_id.get(cam_id, {})
+        department = inferred_department if inferred_department is not None else existing.get("department")
+        lat = inferred_lat if inferred_lat is not None else existing.get("latitude")
+        lon = inferred_lon if inferred_lon is not None else existing.get("longitude")
         if department is None:
             unassigned.append(cam_id)
         if lat is None:

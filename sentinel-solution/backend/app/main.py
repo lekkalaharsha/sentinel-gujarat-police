@@ -13,17 +13,25 @@ from . import config
 from .analytics.anpr import PaddleOcrPlateReader, StubPlateReader
 from .analytics.detector import StubVehicleDetector, YoloVehicleDetector
 from .analytics.pipeline import AnalyticsPipeline
+from .analytics.federation import (
+    DemoPartnerVmsAdapter,
+    NycOpenDataAdapter,
+    SentinelAdapter,
+    ingest_all,
+)
 from .analytics.plate_detector import StubPlateDetector, YoloPlateDetector
 from .api import (
     routes_admin,
     routes_alerts,
     routes_auth,
     routes_cameras,
+    routes_federation,
     routes_stream,
     routes_vehicle,
     routes_watchlist,
 )
 from .api.auth import ensure_default_admin_key
+from .api.rate_limit import RateLimitMiddleware
 from .catalogue import catalogue
 from .db.models import CameraRegistry
 from .db.retention import purge_expired
@@ -35,6 +43,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger("sentinel.main")
 
 app = FastAPI(title="Sentinel — Unified CCTV Viewing & Analytics (Model 1 + 2)")
+# Added before CORSMiddleware so CORS ends up outermost (Starlette wraps in
+# reverse add order) — a 429 from the rate limiter still needs CORS headers
+# for a browser caller to see it as a 429, not a CORS failure.
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware, allow_origins=config.CORS_ALLOWED_ORIGINS, allow_methods=["*"], allow_headers=["*"]
 )
@@ -46,6 +58,7 @@ app.include_router(routes_watchlist.router)
 app.include_router(routes_alerts.router)
 app.include_router(routes_stream.router)
 app.include_router(routes_admin.router)
+app.include_router(routes_federation.router)
 
 def _build_detector():
     """Real YOLOv8 vehicle detector if ultralytics + weights are available
@@ -109,18 +122,25 @@ def _build_plate_reader():
 # statements specifically so the required order stays visible and can't be
 # silently broken by refactoring the AnalyticsPipeline(...) call below.
 #
-# This eager instance is discarded — AnalyticsPipeline builds its own
-# detector PER CAMERA (see pipeline.py) because YoloVehicleDetector now
-# carries persistent ByteTrack state (persist=True) that must not be shared
-# across concurrent camera streams. The eager call here still matters: it's
-# what forces torch to import before paddle, and it fails fast (falling
-# back to a logged warning) at startup rather than on the first live frame.
-_build_detector()
+# This eager instance's construction still matters (forces torch to import
+# before paddle) but the instance itself would normally be discarded —
+# AnalyticsPipeline builds its own detector PER CAMERA (see pipeline.py)
+# because YoloVehicleDetector carries persistent ByteTrack state
+# (persist=True) that must not be shared across concurrent camera streams.
+# Its class name IS kept (not the instance) so /health can report whether
+# the running system is on real models or stub fallback.
+_detector_probe = _build_detector()
 _plate_reader = _build_plate_reader()
+_plate_detector_instance = _build_plate_detector()
 
+ANALYTICS_COMPONENT_STATUS = {
+    "vehicle_detector": type(_detector_probe).__name__,
+    "plate_detector": type(_plate_detector_instance).__name__,
+    "plate_reader": type(_plate_reader).__name__,
+}
 
 pipeline = AnalyticsPipeline(
-    detector_factory=_build_detector, plate_reader=_plate_reader, plate_detector=_build_plate_detector()
+    detector_factory=_build_detector, plate_reader=_plate_reader, plate_detector=_plate_detector_instance
 )
 stream_manager = StreamManager(catalogue, on_frame=pipeline.process)
 
@@ -191,6 +211,46 @@ def on_startup():
             time.sleep(config.RETENTION_SWEEP_INTERVAL_S)
 
     threading.Thread(target=retention_loop, name="retention-sweep", daemon=True).start()
+
+    def federation_ingest_loop():
+        # Model 3: pull both real, independently-formatted sources into
+        # FederatedEvent on a slow poll (deliberately not a message bus —
+        # see docs/models/model-3-vms-federation/RESEARCH.md). A fixed
+        # early `since` re-scans each source in full every poll;
+        # ingest_all()'s dedup logic makes that idempotent rather than
+        # duplicating rows.
+        since = dt.datetime(2000, 1, 1)
+        while True:
+            try:
+                session = SessionLocal()
+                try:
+                    adapters = [SentinelAdapter(session)]
+                    if os.path.exists(config.NYC_OPEN_DATA_FIXTURE_PATH):
+                        adapters.append(NycOpenDataAdapter(config.NYC_OPEN_DATA_FIXTURE_PATH))
+                    else:
+                        logger.warning(
+                            "Model 3 System-B fixture not found at %s — federation will "
+                            "only ingest Sentinel's own data until it's present.",
+                            config.NYC_OPEN_DATA_FIXTURE_PATH,
+                        )
+                    if os.path.exists(config.DEMO_PARTNER_FIXTURE_PATH):
+                        adapters.append(DemoPartnerVmsAdapter(config.DEMO_PARTNER_FIXTURE_PATH))
+                        logger.info(
+                            "Model 3 System-C (SYNTHETIC demo_partner_vms) loaded from %s — "
+                            "correlations involving it demonstrate the pipeline, not a real "
+                            "cross-agency sighting.",
+                            config.DEMO_PARTNER_FIXTURE_PATH,
+                        )
+                    inserted = ingest_all(session, adapters, since)
+                    if inserted:
+                        logger.info("federation ingest: %d new FederatedEvent row(s)", inserted)
+                finally:
+                    session.close()
+            except Exception:  # noqa: BLE001 — an ingest failure must not kill the loop
+                logger.exception("federation ingest failed")
+            time.sleep(config.FEDERATION_INGEST_INTERVAL_S)
+
+    threading.Thread(target=federation_ingest_loop, name="federation-ingest", daemon=True).start()
     logger.info("Sentinel backend started. CDN host=%s stream host=%s", config.CDN_HOST, config.STREAM_HOST)
 
 
@@ -198,8 +258,14 @@ def on_startup():
 def health():
     return {
         "status": "ok",
-        "active_camera_workers": stream_manager.active_camera_ids,
+        # A count, not the camera-ID list — /health is unauthenticated by
+        # design (basic liveness probe), so it shouldn't hand an anonymous
+        # caller the actual camera inventory.
+        "active_camera_worker_count": len(stream_manager.active_camera_ids),
         "catalogue_size": len(catalogue.cameras),
+        # Real class names, not booleans — anything starting with "Stub" is
+        # the honest no-op fallback (see main.py's _build_* functions).
+        "analytics_components": ANALYTICS_COMPONENT_STATUS,
     }
 
 

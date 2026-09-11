@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import os
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -32,6 +33,24 @@ from .. import config
 from .models import Alert, AuditLog, VehicleEvent, VehicleIdentity
 
 logger = logging.getLogger("sentinel.retention")
+
+
+def _delete_crop_files(paths: list[str]) -> int:
+    """Deletes the evidence crop image for each expiring VehicleEvent —
+    the DB row purge alone leaves the actual personal-data image on disk.
+    Best-effort: a missing file is not an error, never blocks the purge."""
+    deleted = 0
+    for path in paths:
+        if not path:
+            continue
+        try:
+            os.remove(path)
+            deleted += 1
+        except FileNotFoundError:
+            pass
+        except OSError as exc:  # noqa: BLE001 — a stuck file must not abort the purge
+            logger.warning("could not delete crop file %s: %s", path, exc)
+    return deleted
 
 
 def purge_expired(session: Session, now: dt.datetime | None = None) -> dict:
@@ -44,11 +63,13 @@ def purge_expired(session: Session, now: dt.datetime | None = None) -> dict:
 
     # Alerts reference vehicle events (FK), so delete alerts for expired
     # events first to avoid dangling references.
-    expired_event_ids = [
-        row[0] for row in session.execute(
-            select(VehicleEvent.id).where(VehicleEvent.observed_at < event_cutoff)
+    expired_events = list(
+        session.execute(
+            select(VehicleEvent.id, VehicleEvent.crop_path).where(VehicleEvent.observed_at < event_cutoff)
         )
-    ]
+    )
+    expired_event_ids = [row[0] for row in expired_events]
+    expired_crop_paths = [row[1] for row in expired_events if row[1]]
     alerts_deleted = 0
     if expired_event_ids:
         alerts_deleted = (
@@ -84,11 +105,19 @@ def purge_expired(session: Session, now: dt.datetime | None = None) -> dict:
     )
 
     session.commit()
+
+    # Crop files are deleted from disk only AFTER the DB commit succeeds —
+    # if the commit had failed, the rows (and their crop_path references)
+    # would still exist, so deleting files first could orphan a still-live
+    # VehicleEvent's evidence image.
+    crops_deleted = _delete_crop_files(expired_crop_paths)
+
     summary = {
         "events_deleted": events_deleted,
         "identities_deleted": identities_deleted,
         "alerts_deleted": alerts_deleted,
         "audit_logs_deleted": audit_deleted,
+        "crop_files_deleted": crops_deleted,
         "event_cutoff": event_cutoff.isoformat(),
         "audit_cutoff": audit_cutoff.isoformat(),
     }

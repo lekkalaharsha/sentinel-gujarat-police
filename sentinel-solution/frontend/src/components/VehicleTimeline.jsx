@@ -3,7 +3,26 @@
 // analytics/geo.py). The visual distinction is the point: a solid marker is
 // real camera evidence; a dashed connector is an inference the operator must
 // read as such, never as observed fact.
-export default function VehicleTimeline({ sightings, routeSegments, selectedIndex, onSelect }) {
+
+// Evidence tier comes from the backend (analytics/evidence_class.py) and is
+// never re-derived here — a badge computed in the browser could drift from
+// the row it labels. `exportable_as_evidence` is likewise the backend's
+// decision; this component only renders it.
+const TIER = {
+  CONFIRMED: { label: "CONFIRMED", color: "var(--confirmed)", bg: "var(--confirmed-bg)" },
+  PROBABLE: { label: "PROBABLE", color: "var(--warn)", bg: "var(--warn-bg)" },
+  LEAD_ONLY: { label: "LEAD ONLY", color: "var(--danger)", bg: "var(--danger-bg)" },
+};
+
+function TierBadge({ cls }) {
+  const t = TIER[cls] || TIER.LEAD_ONLY;
+  return (
+    <span className="state-badge" style={{ color: t.color, background: t.bg, fontWeight: 700 }}>
+      {t.label}
+    </span>
+  );
+}
+export default function VehicleTimeline({ sightings, routeSegments, selectedIndex, onSelect, onExport }) {
   if (!sightings?.length) {
     return <p className="timeline__empty">No movement history yet for this vehicle.</p>;
   }
@@ -32,6 +51,10 @@ export default function VehicleTimeline({ sightings, routeSegments, selectedInde
                   <span>{new Date(s.observed_at).toLocaleString()}</span>
                 </div>
                 <div className="timeline__row timeline__row--sub">
+                  <TierBadge cls={s.evidence_class} />
+                  <span style={{ fontSize: 10.5, color: "var(--text-dim)" }}>{s.link?.method}</span>
+                </div>
+                <div className="timeline__row timeline__row--sub">
                   <span>{s.location || "unknown location"}</span>
                   <span>
                     {s.plate_read_at_this_camera ? (
@@ -45,6 +68,37 @@ export default function VehicleTimeline({ sightings, routeSegments, selectedInde
                   <span>
                     {s.vehicle_type || "type unknown"} · {s.color || "colour unknown"}
                   </span>
+                </div>
+                {s.link?.reid_similarity != null && (
+                  <div className="timeline__row timeline__row--sub">
+                    <span style={{ fontSize: 10.5 }}>
+                      link score {s.link.reid_similarity.toFixed(2)}
+                      {s.link.time_since_previous_sighting_s != null &&
+                        ` · gap ${Math.round(s.link.time_since_previous_sighting_s)}s`}
+                    </span>
+                  </div>
+                )}
+                <p style={{ fontSize: 10.5, color: "var(--text-dim)", margin: "6px 0 0", lineHeight: 1.5 }}>
+                  {s.evidence_class_reason}
+                </p>
+                <div style={{ marginTop: 8 }}>
+                  <button
+                    className="btn2"
+                    disabled={!s.exportable_as_evidence}
+                    title={
+                      s.exportable_as_evidence
+                        ? "Export this sighting as evidence"
+                        : "Investigative lead requiring human verification — cannot be exported as evidence."
+                    }
+                    onClick={(e) => { e.stopPropagation(); onExport?.(s); }}
+                  >
+                    Export as Evidence
+                  </button>
+                  {!s.exportable_as_evidence && (
+                    <span style={{ fontSize: 10.5, color: "var(--text-dim)", marginLeft: 8 }}>
+                      Investigative lead requiring human verification.
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

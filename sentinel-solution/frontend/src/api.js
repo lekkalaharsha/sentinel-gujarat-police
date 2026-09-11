@@ -37,24 +37,41 @@ export const api = {
   listCameras: () => request("/cameras"),
   getCamera: (id) => request(`/cameras/${id}`),
   gapAnalysis: () => request("/cameras/gap-analysis"),
+  // The API key lives in a custom header, not a cookie, so a plain <a href>
+  // download can't authenticate — fetch the PDF as a blob and trigger a
+  // client-side download instead.
+  downloadGapAnalysisPdf: async () => {
+    const apiKey = getApiKey();
+    const headers = {};
+    if (apiKey) headers["X-Sentinel-API-Key"] = apiKey;
+    const res = await fetch(`${API_BASE}/cameras/gap-analysis/export.pdf`, { headers });
+    if (!res.ok) throw new Error(`${res.status} failed to generate PDF`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "sentinel_gap_analysis.pdf";
+    a.click();
+    URL.revokeObjectURL(url);
+  },
   onboardCamera: (camera) =>
     request("/cameras", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(camera),
     }),
-  vehicleHistory: (plate, purpose, caseId) => {
+  vehicleHistory: (plate, purpose, caseId, { signal } = {}) => {
     const params = new URLSearchParams({ purpose });
     if (caseId) params.set("case_id", caseId);
-    return request(`/vehicle/${encodeURIComponent(plate)}/history?${params}`);
+    return request(`/vehicle/${encodeURIComponent(plate)}/history?${params}`, { signal });
   },
-  searchByAttributes: (purpose, { vehicleType, color, partialPlate, caseId } = {}) => {
+  searchByAttributes: (purpose, { vehicleType, color, partialPlate, caseId, signal } = {}) => {
     const params = new URLSearchParams({ purpose });
     if (vehicleType) params.set("vehicle_type", vehicleType);
     if (color) params.set("color", color);
     if (partialPlate) params.set("partial_plate", partialPlate);
     if (caseId) params.set("case_id", caseId);
-    return request(`/vehicle/search-by-attributes?${params}`);
+    return request(`/vehicle/search-by-attributes?${params}`, { signal });
   },
   listWatchlist: () => request("/watchlist"),
   addWatchlist: (plate, reason) =>
@@ -90,8 +107,31 @@ export const api = {
     if (!res.ok) throw new Error(`${res.status}`);
     return URL.createObjectURL(await res.blob());
   },
+  listApiKeys: () => request("/auth/api-keys"),
+  createApiKey: (userId, role, department) =>
+    request("/auth/api-keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId, role, department: department || null }),
+    }),
   auditLog: (limit = 200) => request(`/admin/audit-log?limit=${limit}`),
   retentionPolicy: () => request("/admin/retention-policy"),
   triggerPurge: () => request("/admin/purge", { method: "POST" }),
   recentDetections: (limit = 20) => request(`/vehicle/recent?limit=${limit}`),
+
+  federationCorrelations: () => request("/federation/correlations"),
+  downloadFederationReportPdf: async () => {
+    const apiKey = getApiKey();
+    const headers = {};
+    if (apiKey) headers["X-Sentinel-API-Key"] = apiKey;
+    const res = await fetch(`${API_BASE}/federation/correlations/export.pdf`, { headers });
+    if (!res.ok) throw new Error(`${res.status} failed to generate PDF`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "sentinel_federation_report.pdf";
+    a.click();
+    URL.revokeObjectURL(url);
+  },
 };

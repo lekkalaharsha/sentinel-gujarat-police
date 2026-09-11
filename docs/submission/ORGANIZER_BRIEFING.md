@@ -12,9 +12,11 @@ and citations. See `EMAIL_DRAFT.md` for a condensed, send-ready version.
 ## 1. What Sentinel Is
 
 Sentinel is **not** a from-scratch CCTV command platform. Gujarat Police
-already operates VISWAS/NETRAM/TRINETRA — 7,000+ cameras, 34 district
-NETRAM command centres feeding a state-level TRINETRA ICCC, integrated
-with VAHAN/SARTHI, with Phase-II adding ~10,500 more cameras. Pitching a
+already operates VISWAS/NETRAM/TRINETRA — publicly reported at 7,000+
+cameras, 34 district NETRAM command centres feeding a state-level
+TRINETRA ICCC, integrated with VAHAN/SARTHI, with Phase-II reportedly
+adding ~10,500 more cameras (figures per Gujarat Home Department public
+communications, not independently verified by this team). Pitching a
 new platform on top of that would invite (and deserve) the question "what
 did you actually invent?"
 
@@ -22,9 +24,10 @@ did you actually invent?"
 layer** that sits *above* existing departmental CCTV/VMS infrastructure —
 including TRINETRA/NETRAM — registering cameras, normalizing heterogeneous
 feeds into one canonical event model, correlating vehicle observations
-across cameras and departments, and connecting those events to authorized
-government databases (VAHAN, CCTNS, eGujCop) — **without requiring any
-department to replace what they already run.**
+across cameras and departments, and (as a **design target, not built** —
+see `HLD.md` §6's "query, don't copy" principle) connecting those events to
+authorized government databases (VAHAN, CCTNS, eGujCop) — **without
+requiring any department to replace what they already run.**
 
 **The genuine, defensible contribution** is not detection or ANPR — those
 are already shipped commercially in India (Staqu JARVIS, Videonetics,
@@ -64,7 +67,7 @@ lifecycle`
 never every raw video frame. The math: 80,000 cameras × ~2 Mbps ≈ 160 Gbps
 sustained / ~1.7 PB per day if raw video were centralized — not credible
 for anyone. Structured events (plate, timestamp, camera ID, confidence —
-~1 KB each) reduce this to ~640 Mbps statewide, a ~1000x cut, which is
+~1 KB each) reduce this to ~640 Mbps statewide, a ~250x cut, which is
 what makes a real central event plane (Kafka/PostgreSQL) achievable at
 full scale.
 
