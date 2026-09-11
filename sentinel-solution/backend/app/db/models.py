@@ -129,6 +129,12 @@ class VehicleEvent(Base):
     camera_id = Column(String, ForeignKey("camera_registry.id"), nullable=False)
     pts_ms = Column(Float, nullable=False)  # stream-relative PTS, not wall clock
     observed_at = Column(DateTime, default=dt.datetime.utcnow)  # wall clock for display only
+    # Separate from observed_at so a future queued/batched ingestion path
+    # (SCALABILITY.md's regional event bus) can tell "seen at" apart from
+    # "landed in this DB" — the two coincide today (row is written
+    # immediately after resolution) but the column already exists for when
+    # they don't. Matches FederatedEvent's observed_at/ingested_at split.
+    ingested_at = Column(DateTime, default=dt.datetime.utcnow)
     confidence = Column(Float, nullable=True)  # detector confidence
 
     vehicle_type = Column(String, nullable=True)  # car / truck / bus / motorcycle
@@ -220,6 +226,29 @@ class CameraAuditLog(Base):
     user_id = Column(String, nullable=False)
     action = Column(String, nullable=False)  # "onboarded" | "updated"
     created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class FederatedEvent(Base):
+    """Model 3: normalized landing zone for events pulled from any
+    `VMSAdapter` (see analytics/federation.py) — the "metadata exchange
+    bus" deliverable, implemented as a polled table rather than Kafka/
+    RabbitMQ (deliberate pilot-scale decision, see
+    docs/models/model-3-vms-federation/RESEARCH.md). `source_system`
+    distinguishes Sentinel's own real data ("sentinel") from the real,
+    independent NYC Open Data public dataset ("nyc_open_data") used as
+    Model 3's second federated source — NOT a second Gujarat departmental
+    VMS, see federation.py's module docstring for the honesty caveat.
+    """
+
+    __tablename__ = "federated_event"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source_system = Column(String, nullable=False, index=True)
+    plate = Column(String, nullable=False, index=True)
+    observed_at = Column(DateTime, nullable=False)
+    camera_id = Column(String, nullable=False)
+    raw_payload_json = Column(String, nullable=True)
+    ingested_at = Column(DateTime, default=dt.datetime.utcnow)
 
 
 class ApiKeyEntry(Base):

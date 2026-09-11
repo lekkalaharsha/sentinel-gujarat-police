@@ -163,6 +163,33 @@ def test_consensus_plate_different_length_reads_grouped_separately():
     assert conf == pytest.approx(1.0)  # unanimous within its own (winning) group
 
 
+# --- track-contamination: known, unmitigated limitation ---------------------
+
+def test_consensus_plate_can_synthesize_a_string_that_matches_no_actual_read():
+    """With reads from more than two sources, position voting can produce
+    a full string matching NONE of them:
+        pos0: 'A' mass=1.5 vs 'X' mass=2.5           -> 'X'
+        pos1: 'B' mass=2.0 vs 'Z' 0.5, 'Y' 1.5        -> 'B'
+        pos2: 'C' mass=1.5 vs 'Y' 1.0, 'Z' 1.5 (tie,
+              first-seen wins)                        -> 'C'
+    "XBC" appears in none of "ABC"/"XBY"/"AZC"/"XYZ" — see
+    consensus_plate()'s docstring for why this isn't fixed here."""
+    tracker = CameraTracker()
+    track = tracker.update(
+        bbox=B, pts_ms=1000.0, vehicle_type="car",
+        detection_confidence=0.9, attrs=ATTRS, plate_result=("ABC", 1.0),
+    )
+    track.add_observation(B, 1100.0, 0.9, ATTRS, ("XBY", 1.0))
+    track.add_observation(B, 1200.0, 0.9, ATTRS, ("AZC", 0.5))
+    track.add_observation(B, 1300.0, 0.9, ATTRS, ("XYZ", 1.5))
+
+    plate, conf = track.consensus_plate()
+
+    assert plate == "XBC"
+    assert plate not in {"ABC", "XBY", "AZC", "XYZ"}
+    assert conf == pytest.approx(0.38, abs=0.01)
+
+
 # --- ByteTrack id handoff ---------------------------------------------------
 
 def test_bytetrack_id_handoff_claims_frame1_iou_track():

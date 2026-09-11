@@ -125,6 +125,18 @@ class Track:
         with the most total confidence wins, generalizing the old
         algorithm's "highest vote mass wins" selection from exact strings
         to length-groups.
+
+        Known, tested, unmitigated limitation: if `plate_reads` ever mixed
+        sightings of two different vehicles (e.g. an IOU-overlap
+        association merging a second car into this track), the vote could
+        return a hybrid plate nobody's camera actually saw — see
+        test_tracker.py's contamination test. No character-agreement rule
+        can fix this without also breaking the legitimate same-vehicle
+        severe-misread case (isolates_higher_vote_share /
+        confidence_is_vote_share_not_count both require outvoting a
+        majority-disagreeing single stray read). A real fix needs signal
+        outside the plate string — an appearance-embedding check at
+        association time — not attempted here (see TASKS.md).
         """
         if not self.plate_reads:
             return None, None

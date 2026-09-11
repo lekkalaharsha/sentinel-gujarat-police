@@ -39,6 +39,7 @@ _ADDITIVE_MIGRATIONS = [
     ("alert", "alert_type", "VARCHAR DEFAULT 'watchlist' NOT NULL"),
     ("camera_registry", "install_date", "DATETIME"),
     ("camera_registry", "coverage_radius_m", "FLOAT"),
+    ("vehicle_event", "ingested_at", "DATETIME"),
 ]
 
 
