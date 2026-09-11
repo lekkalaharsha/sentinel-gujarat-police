@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from .. import config
 from ..analytics.anpr import normalize_plate
+from ..analytics import evidence_class as ec
 from ..analytics.geo import RoutePoint, build_inferred_segments, rank_candidate_cameras
 from ..db.models import AuditLog, CameraRegistry, VehicleEvent, VehicleIdentity
 from ..watchlist.service import watchlist_service
@@ -82,6 +83,8 @@ def recent_detections(
             "color": e.color,
             "has_evidence_image": e.crop_path is not None,
             "watchlisted": bool(e.plate and watchlist_service.check(e.plate)),
+            "evidence_class": _cls(e),
+            "exportable_as_evidence": ec.is_exportable(_cls(e)),
         })
     return out
 
@@ -120,6 +123,10 @@ def _explain_link(e: VehicleEvent) -> dict:
         "temporal_consistency": temporal_consistency,
         "fused_score": fused_score,
     }
+
+
+def _cls(e) -> str:
+    return ec.classify(e.plate, e.link_method)
 
 
 @router.get("/{plate}/history")
@@ -191,6 +198,15 @@ def vehicle_history(
                     "direction_deg": e.direction_deg,
                 },
                 "link": _explain_link(e),
+                # Evidence classification (analytics/evidence_class.py):
+                # derived from persisted provenance, not asserted by the UI,
+                # so a badge can never disagree with the row it labels.
+                # `exportable` is the authoritative gate — the frontend
+                # disables its export control from this field rather than
+                # re-deriving the rule.
+                "evidence_class": _cls(e),
+                "evidence_class_reason": ec.describe(_cls(e), e.link_method),
+                "exportable_as_evidence": ec.is_exportable(_cls(e)),
                 # Evidence: real detection crop + bbox if the pipeline saved
                 # one (see analytics/pipeline.py); null on older rows or if
                 # the write failed. event_id lets the UI fetch the image.
