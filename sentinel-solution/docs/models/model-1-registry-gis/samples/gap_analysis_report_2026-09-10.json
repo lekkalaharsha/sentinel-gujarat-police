@@ -1,0 +1,27 @@
+{
+  "catalogue_size": 30,
+  "registered_size": 30,
+  "live_not_onboarded": [],
+  "onboarded_not_live": [],
+  "missing_department": [
+    "cam06", "cam07", "cam08", "cam09", "cam10", "cam11", "cam12", "cam13",
+    "cam14", "cam15", "cam16", "cam18", "cam20", "cam21", "cam22", "cam23",
+    "cam24", "cam25", "cam26", "cam27", "cam28", "cam29", "cam30"
+  ],
+  "missing_gis_coordinates": [
+    "cam13", "cam14", "cam15", "cam20", "cam22", "cam23", "cam25", "cam26"
+  ],
+  "unhealthy": [
+    "cam01", "cam02", "cam04", "cam05", "cam07", "cam08", "cam09", "cam11",
+    "cam12", "cam15", "cam16", "cam17", "cam18", "cam19", "cam21", "cam22",
+    "cam23", "cam26", "cam28", "cam29", "cam30"
+  ],
+  "cameras_by_department": {
+    "Police": 1,
+    "Municipal Corporation": 1,
+    "GSRTC": 2,
+    "Health": 1,
+    "Panchayat": 2,
+    "unassigned": 23
+  }
+}
