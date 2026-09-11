@@ -4,9 +4,16 @@
 
 Gujarat Police already operates **VISWAS/NETRAM/TRINETRA**: 7,000+ cameras, 34 district
 NETRAM command centres feeding a state-level TRINETRA ICCC, integrated with VAHAN/SARTHI,
-with a Phase-II expansion already adding ~10,500 more cameras. A jury with real Gujarat
-Police knowledge will ask "what did you invent?" if we pitch a from-scratch unified CCTV
-platform.
+with a Phase-II expansion already adding ~10,500 more cameras. **Sourcing caveat (added
+2026-09-11, flagged by an independent project review): these figures are publicly reported
+in Gujarat Home Department communications but are not backed by a specific, checkable
+citation anywhere in this repo** — unlike the Model 4 roadmap docs, which cite and
+self-correct against named sources (deshgujarat.com, NIST, Delhi High Court). Find and cite
+a specific source before repeating these numbers to the jury as fact, or state them as
+"publicly reported, not independently verified" if no citable source is found. A jury with
+real Gujarat Police knowledge will ask "what did you invent?" if we pitch a from-scratch
+unified CCTV platform — that argument holds regardless of the exact camera count, but the
+specific numbers above should not be asserted without a source.
 
 **Do not pitch:** "We built a centralized CCTV command platform for Gujarat."
 
@@ -31,15 +38,24 @@ Re-ID is one input signal, not the whole mechanism.
 
 ## Model choice: explicit hybrid (decided 2026-09-03)
 
-Positioning is a **Model 1 + Model 2 hybrid**, with the Model 3/4 (federation → central
-AI platform) path documented as the production roadmap but NOT claimed as built. Rationale:
-"combine elements from two or more models" is the rules' own definition of a hybrid (§7),
-and "innovative hybrid/customized architecture with operational value" is an explicit
-**bonus** criterion (§10) — so we claim hybrid credit for what's genuinely built and show
-the federation/central-VMS evolution as roadmap, without overstating. Building a real
-per-vendor VMS federation bus (Model 3) stays on the OUT list — not achievable in the
-window, and a half-built federation layer would be worse than an honest documented path.
-The HLD (§1) states this framing directly.
+Positioning is a **Model 1 + Model 2 hybrid**, with Model 4 (central AI platform)
+documented as production roadmap but NOT claimed as built. Rationale: "combine elements
+from two or more models" is the rules' own definition of a hybrid (§7), and "innovative
+hybrid/customized architecture with operational value" is an explicit **bonus** criterion
+(§10) — so we claim hybrid credit for what's genuinely built and show the remaining
+evolution as roadmap, without overstating. The HLD (§1) states this framing directly.
+
+**Revised 2026-09-10 (user decision):** Model 3 (VMS Federation & Middleware Integration)
+is now **planned to be built for real**, but explicitly **sequenced after Model 1 and
+Model 2 are fully complete** — not started until the remaining Model 1/2 gaps in
+`docs/hackathon/TASKS.md` (P0 demo video, P1 confirmed bugs, doc-honesty points) are
+closed. This supersedes the "stays on the OUT list" framing below for Model 3
+specifically (Model 4 and the other OUT items are unchanged). When Model 3 work starts,
+scope it deliberately small and honest per this doc's own principle — a minimal, real
+adapter/event-correlation slice federating ≥2 sources (the hackathon's own Model 3
+deliverable bar), not a full Kafka/RabbitMQ production bus this week. Revisit the OUT
+list entry below and the module-docs workflow (`docs/hackathon/TASKS.md`'s "Paused work"
+section) at that point.
 
 ## Architecture decision
 
@@ -114,9 +130,11 @@ credible target and we say so, rather than pretending otherwise.)
   wrong-way vehicle, stopped-in-restricted-zone — otherwise skip entirely)
 - Full 80,000-camera physical ingestion — instead demonstrate the **control plane** scales
   independently: real 30 cameras + a larger simulated registry showing health/status at scale
-- Building a new VMS, or full VMS federation middleware
+- Building a new VMS
 - Actually deploying MediaMTX/go2rtc/Kafka this week — cite as the documented production
   path in the HLD; our direct-RTSP pilot is explicitly labeled as the demonstrable subset
+- ~~Full VMS federation middleware (Model 3)~~ — **revised 2026-09-10**, see the "Model
+  choice" section above: now planned for real, but only after Model 1/2 are complete.
 
 ## DPDP note (for the HLD's legal/compliance section)
 

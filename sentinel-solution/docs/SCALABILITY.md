@@ -23,9 +23,16 @@ timestamp, camera_id, embedding, confidence) ≈ 1 KB/s/camera
 80,000 cameras × 1 KB/s ≈ 80 MB/s ≈ 640 Mbps sustained event-plane traffic
 ```
 
-That's a three-orders-of-magnitude reduction versus raw video, and it's
-what makes a Kafka/PostgreSQL-based event plane a realistic central tier
-even at full scale. Video itself stays regional/local — see §3.
+That's a **~250x reduction** versus raw video (160,000 Mbps ÷ 640 Mbps —
+corrected 2026-09-11 from an earlier "three orders of magnitude"/~1000x
+claim, which was arithmetically wrong; independently recomputed during a
+project review), and it's still what makes a Kafka/PostgreSQL-based event
+plane a realistic central tier even at full scale. Video itself stays
+regional/local — see §3. Note the 640 Mbps side is itself an
+underestimate for planning purposes: it excludes JSON/protocol overhead,
+evidence-crop transmission, and replica-write traffic, so the real
+achievable reduction in production is likely somewhat less than 250x, not
+more.
 
 ## 2. Compute tiers
 

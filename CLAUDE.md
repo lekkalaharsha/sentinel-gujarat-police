@@ -204,19 +204,53 @@ be run, report that clearly.
   dead code, commented-out implementations, and vague TODOs.
 
 
+## Git rules
 
-##  Git and Pull Request Workflow
+**Changed 2026-09-10: this repo now uses a full branch+PR workflow**,
+even though there is still one contributor and no CI/second reviewer —
+the user explicitly opted into this over staying with the prior direct-
+to-`master` practice. Repo: `github.com/lekkalaharsha/sentinel-gujarat-
+police`. There is still no issue tracker (GitHub Issues aren't in use) —
+don't invent one; branches/PRs are scoped directly off the task at hand
+or `docs/hackathon/TASKS.md`, not an issue number.
 
-- Follow: `issue -> branch -> implementation -> tests -> PR -> review -> merge`.
-- Run configured pre-commit hooks before pushing or opening a PR.
-- Do not bypass pre-commit hooks with `--no-verify` unless explicitly approved and documented.
-- Recommended branches: `feature/<issue>-<description>`, `fix/<issue>-<description>`, `docs/<description>`.
-- Keep commits and PRs focused on one logical change.
-- Use clear commits such as `feat: add review API` or `fix: validate upload size`.
-- Link the relevant issue in the PR; use `Closes #<issue>` where appropriate.
-- PRs should state what changed, why, how it was tested, and any API/database/integration impact.
-- Review the complete diff before considering the PR ready.
-- Never commit secrets, temporary debug code, generated junk, or unrelated changes.
+- Follow: `branch -> implementation -> tests -> PR -> self-review -> merge`.
+- **Only commit, branch, push, open/merge a PR, tag, or create a release
+  when the user explicitly asks** — per standing harness rules, don't do
+  any of these proactively even at a natural checkpoint, and a prior
+  approval doesn't carry forward to a new unrelated change.
+- **Branch naming**: `feature/<short-description>`, `fix/<short-description>`,
+  `docs/<short-description>` (no issue number prefix, since there's no
+  issue tracker) — e.g. `feature/model1-gis-layer-toggle`,
+  `fix/create-api-key-400-status`.
+- Commit in logical units (e.g. "backend fixes" separate from "frontend
+  rebuild" separate from "docs restructure") rather than one giant
+  commit — see the `v0.1.0` history for the pattern this project has
+  actually used.
+- **PRs**: use `gh pr create`. The description states what changed, why,
+  how it was tested, and any API/database/integration impact (see the
+  template in this file's top-level "Creating pull requests" instructions).
+  Since there's no second reviewer, the self-review step is not optional —
+  read the complete diff before calling a PR ready, per the completion
+  checklist below.
+- Merge via `gh pr merge` only when the user asks; don't auto-merge on
+  green (there is no CI configured to be green against).
+- Never `--amend` a published/already-pushed commit; never force-push.
+  Never force-push or delete a branch containing unmerged work without
+  confirming with the user first.
+- Never commit `.env`, `sentinel.db`, model weights (`*.pt`/`*.onnx`),
+  `sentinel-solution/demo_output/`, a minted API key, or any other
+  secret/generated-junk file — check `git status` after a broad `git add`
+  before committing, not just before.
+- **No pre-commit hooks are configured in this repo** — don't invent one
+  unprompted, and there is nothing to bypass with `--no-verify`.
+- **Tags and releases**: this project versions milestones with annotated
+  tags (`v0.0.1` baseline, `v0.1.0` first feature+restructure release)
+  plus a matching `gh release create` with real, specific release notes
+  (what changed since the last tag, not a generic template) — continue
+  this pattern for future milestones rather than starting a new scheme,
+  cut from `master` after a PR has merged, and only cut a tag/release
+  when the user asks for one.
 
 
 ## Testing and completion checklist

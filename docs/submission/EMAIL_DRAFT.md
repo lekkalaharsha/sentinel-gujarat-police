@@ -21,8 +21,10 @@ have access to — the vendor-neutral, standards-based design is what makes
 that integration feasible without a rebuild, not a claim that it's already
 been proven against those specific systems. It registers cameras,
 normalizes feeds into one event model, and correlates vehicle observations
-**across departments**, connecting to authorized databases (VAHAN, CCTNS,
-eGujCop) without requiring any department to change what they already run.
+**across departments**, and (as a design target, not built — see the
+"query, don't copy" principle in the full HLD) connects to authorized
+databases (VAHAN, CCTNS, eGujCop) without requiring any department to
+change what they already run.
 
 **Architecture:** a Model 1 + Model 2 hybrid (per the challenge's own
 "combine suitable elements from two or more models" allowance) —
@@ -32,7 +34,7 @@ viewing and AI analytics (Model 2), with a documented Model 3/4
 now. The core design principle: centralize metadata and events, never
 raw video. At 80,000 cameras, raw video would need ~160 Gbps sustained
 (~1.7 PB/day) — not feasible for anyone. Structured events reduce this to
-~640 Mbps statewide, a ~1000x cut, which is what makes a real statewide
+~640 Mbps statewide, a ~250x cut, which is what makes a real statewide
 event plane achievable.
 
 **Scaling path** (same codebase, not a rebuild at each stage): pilot

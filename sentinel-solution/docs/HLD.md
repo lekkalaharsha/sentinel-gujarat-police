@@ -27,7 +27,9 @@ federation bus (Model 3) is deliberately out of scope for the build window
 kind of overstatement this submission avoids.
 
 Justification: Gujarat already operates VISWAS/NETRAM/TRINETRA at scale
-(7,000+ cameras, Phase-II adding ~10,500 more). Pitching a from-scratch
+(publicly reported at 7,000+ cameras, Phase-II adding ~10,500 more —
+figures per Gujarat Home Department public communications, not
+independently verified by this team). Pitching a from-scratch
 centralized VMS (Model 4) invites the reasonable jury question "what did
 you invent that doesn't already exist?" Model 2's direct-connection
 approach — no new middleware layer, connect straight to each department's
@@ -531,6 +533,24 @@ Windows, not yet on the likely-Linux production/demo box.
   (401/403), not logged-and-allowed. This is a genuine, if minimal (no
   full OAuth/session flow — an honest scope choice for the build window),
   implementation of Model 1's explicit "department-wise RBAC" deliverable.
+- **Department scoping is deliberately NOT applied to vehicle search/
+  movement-history queries — stated explicitly here, not just in a code
+  comment (flagged by an independent project review, 2026-09-11, as the
+  kind of tradeoff that needs a named justification in the submission
+  docs, not just `api/auth.py`'s docstring).** `GET /cameras` and its
+  siblings ARE department-scoped (an investigator tied to one department
+  sees only that department's cameras); `GET /vehicle/{plate}/history`
+  and `/vehicle/search-by-attributes` are NOT — any `investigator`-role
+  key, regardless of which department it's tied to, can trace any plate
+  across every department's cameras. This is a deliberate design choice,
+  not an oversight: cross-department vehicle-identity correlation is this
+  project's stated core differentiator (§1), and department-scoping the
+  one capability that makes that possible would defeat it. The tradeoff
+  is real, though — it means "investigator" effectively means
+  "investigator, all departments" for the single most sensitive query
+  surface in the system. A production deployment should weigh whether a
+  narrower "cross-department escalation" role, or an additional audit
+  flag on cross-department results, is warranted; not built here.
 - **Purpose-bound, audited queries:** every vehicle-history/search query
   logs the *authenticated* user (from the API key, not a self-reported
   string), stated purpose, and optional case ID to `AuditLog` — this
@@ -693,6 +713,17 @@ Windows, not yet on the likely-Linux production/demo box.
   built, pruning must be a soft ranking hint, never a hard exclusion, and
   must never override a confirmed plate read — a false negative (losing the
   vehicle) is worse than extra compute for a police tool.
+- **`ultralytics` (the vehicle detector library, `analytics/detector.py`)
+  is ALSO AGPL-3.0-licensed — flagged 2026-09-11 by an independent project
+  review, previously undisclosed here.** The plate-localizer's AGPL-3.0
+  risk below was flagged and accepted, but `ultralytics` itself (used for
+  vehicle detection AND the within-camera ByteTrack tracker, not just the
+  plate-detection seam) carries the same license and the same network-use
+  disclosure obligation for a government backend serving predictions over
+  HTTP — this is the same accepted risk category, now disclosed for both
+  components rather than only one. No different decision is implied; a
+  real production deployment's legal review (already recommended below)
+  should cover both dependencies, not just the plate localizer.
 - **Fine-tuned plate localizer — evaluated, AGPL-3.0 risk accepted and
   integrated 2026-09-05.** `morsetechlab/yolov11-license-plate-detection`
   (Hugging Face) is a real, named-publisher YOLOv11 plate detector shipping

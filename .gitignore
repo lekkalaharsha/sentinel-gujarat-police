@@ -45,3 +45,6 @@ sentinel-solution/demo_output/
 
 # Microsoft Office lock files (transient, created while a .pptx/.docx is open)
 ~$*
+
+# Generated deck slide previews — regenerate with deck-build/build_deck_v2.py
+sentinel-solution/deck-build/preview_final/

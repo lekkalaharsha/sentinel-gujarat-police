@@ -8,6 +8,98 @@ Cross-check against `REQUIREMENTS_COVERAGE.md` (the authoritative
 deliverable-status matrix) and `sentinel-solution/README.md` ("Known
 issues") before trusting this file if it's more than a day or two old.
 
+## Paused work — resume later
+
+- [x] **Per-reference-model module docs (Model 1–4) — drafted 2026-09-11.**
+      Started 2026-09-10 as a multi-agent Workflow run; that Workflow tool
+      wasn't available in the session that resumed this, so the remaining
+      models were drafted directly instead (research via forked
+      subagents, writing via direct file edits) — same scope, different
+      mechanism. All four module folders now exist under
+      `sentinel-solution/docs/models/`, each with `ARCHITECTURE.md`/
+      `REQUIREMENTS.md`/`RESEARCH.md`/`IMPLEMENTATION_PLAN.md`:
+      - `model-1-registry-gis/` — **re-verified 2026-09-11**: all four 🟡
+        gaps found in the original 2026-09-10 pass were independently
+        confirmed closed by `3306db6` (ageing tracking, coverage-radius
+        layer, search filters, onboarding audit trail); docs updated to
+        reflect this. Also caught and fixed a stale claim in
+        `REQUIREMENTS_COVERAGE.md` line 27 ("camera health/maintenance-
+        status monitoring" was marked fully ✅ but maintenance-status
+        beyond healthy/unhealthy was never built) — downgraded to 🟡 with
+        the same caveat as the module doc, so the two docs no longer
+        disagree.
+      - `model-2-unified-viewing/` — ground-truthed against real code;
+        no required-tier gaps against the literal spec (the one 🟡,
+        "≥2 different systems," is a sandbox-availability limit, not
+        missing code). Documented-but-skipped hardening items: WHEP
+        low-latency live view, per-camera anomaly-detection calibration,
+        FastReID/OSNet Re-ID upgrade (skipped because the sandbox lacks
+        enough cross-camera repeat sightings to validate a swap, not
+        because it'd be hard to wire in).
+      - `model-3-vms-federation/` — real build plan (not built yet, see
+        "Build Model 3" below), scoped to one real adapter (wraps our
+        existing Model 1/2 stack) + one real, independent, public dataset
+        as the second system (NYC's "Open Parking and Camera Violations"
+        open dataset, `data.cityofnewyork.us` — **revised 2026-09-11**
+        after the user rejected an initial self-authored-fixture plan; a
+        research pass found and selected this real dataset instead), a
+        polled `FederatedEvent` table (not Kafka), and a minimal
+        correlation dashboard — ~12.5 hrs / 1.5–2 days estimated. Zero
+        real cross-system plate overlap is expected by construction
+        (different countries) and must be disclosed everywhere a
+        correlation result is shown; any populated demo match needs one
+        clearly-labeled synthetic overlay, not a blended-in real one.
+      - `model-4-central-vms/` — roadmap-only, explicitly not built.
+        Citations independently fact-checked and corrected 2026-09-11
+        (an initial research pass's unconfirmed figures were replaced):
+        Ahmedabad's Command and Control Centre (Paldi, operational since
+        2018) confirmed at ~6,000 cameras including 1,600 at major
+        traffic junctions (deshgujarat.com) as the realistic integration
+        target rather than a fictional greenfield build; NIST FRVT Part 3
+        (NISTIR 8280)'s confirmed finding of up to 7,200× within-group
+        false-positive-rate variation (not the earlier unconfirmed
+        "10×–100×"/specific-demographic-group claim) and Delhi Police's
+        confirmed 2% accuracy figure (not "1–2%", per its own 2018 Delhi
+        High Court statement) as the specific grounding for excluding
+        Face Recognition from any
+        committed roadmap; inherits `SCALABILITY.md` §6's phased rollout
+        rather than redefining it.
+      **Not yet done: user review.** Presented for feedback in this
+      session before any tagging — planned tags per the original note
+      (`v0.2.0`–`v0.5.0` per model) are still pending the user's go-ahead,
+      since a prior approval doesn't carry forward per this repo's git
+      rules.
+
+- [x] **Build Model 3 (VMS Federation & Middleware) — built 2026-09-11.**
+      Decided 2026-09-10 to sequence this after Model 1+2 closed (they had,
+      per `TASKS.md`'s own tracking); user gave explicit go-ahead
+      2026-09-11 and it shipped the same session. Real, tested:
+      `analytics/federation.py` (`VMSAdapter` Protocol, `SentinelAdapter`
+      wrapping our own real data, `NycOpenDataAdapter` parsing a real
+      2,000-row slice of NYC Open Data's public "Open Parking and Camera
+      Violations" dataset — downloaded live from its Socrata API, not
+      fabricated), a polled `FederatedEvent` table with idempotent
+      ingest (`main.py`'s `federation_ingest_loop`), a correlation engine
+      (`routes_federation.py`'s `GET /federation/correlations`, reusing
+      Model 2's `link_score` explainability vocabulary), a frontend
+      dashboard (`FederationDashboard.jsx`), and a PDF export reusing
+      Model 1's `reportlab` pattern. 15 new regression tests, full backend
+      suite 70/70 passing. A real sample report
+      (`docs/assets/sample_federation_report.pdf`) was generated
+      end-to-end and shows **0 correlated plates** — the honestly-
+      predicted outcome (zero real plate overlap between Gujarat and NYC
+      vehicles, disclosed everywhere via the response's `honesty_note`),
+      now empirically confirmed rather than just theorized. System B is
+      real public data, not a second Gujarat departmental VMS — see
+      `sentinel-solution/docs/models/model-3-vms-federation/` for the
+      full design rationale, including the earlier rejected
+      self-authored-fixture plan and why the user asked for a real
+      dataset instead. `docs/hackathon/REQUIREMENTS_COVERAGE.md` gained a
+      new §C for this (sections C–F renumbered to D–G accordingly).
+      **Still open:** tagging (`v0.4.0` per the original plan) is pending
+      user review of this build; a demo script/video for Model 3 doesn't
+      exist yet.
+
 ## P0 — hard submission blockers
 
 - [x] **Camera-registry auto-population — closed 2026-09-10.**
@@ -78,6 +170,10 @@ issues") before trusting this file if it's more than a day or two old.
 
 ## P1 — do before/alongside the videos if time allows
 
+**Re-researched 2026-09-10** (4 parallel research-only passes, no code
+changed yet — findings below replace the previous vague entries with
+confirmed status + a concrete described fix for each).
+
 - [x] **Stale-search race — fixed 2026-09-10.** Confirmed the race
       survived the frontend rebuild in both `VehicleIntelligence.jsx` and
       `SearchView.jsx` (`submit()` in each fired a plain `fetch` with no
@@ -85,11 +181,11 @@ issues") before trusting this file if it's more than a day or two old.
       second search's results). Fixed with an `AbortController` per
       submit in both components: the previous in-flight request is
       aborted before a new one starts, and `api.js`'s `vehicleHistory`/
-      `searchByAttributes` now accept and forward a `signal`. Verified
-      with `npm run build` (clean) and `npm run lint` (no new warnings);
-      not click-tested in a live browser this session (no browser
-      automation tool available) — worth a manual double-search check
-      before the demo.
+      `searchByAttributes` now accept and forward an optional `signal`.
+      Verified with `npm run build` (clean) and `npm run lint` (no new
+      warnings); not click-tested in a live browser this session (no
+      browser automation tool available) — worth a manual double-search
+      check before the demo.
 - [x] **`create_api_key` 200-vs-400 — fixed 2026-09-10.** `routes_auth.py`
       now imports `HTTPException` and raises `HTTPException(400, "role
       must be one of admin, investigator, viewer")` for an invalid role
@@ -202,6 +298,31 @@ issues") before trusting this file if it's more than a day or two old.
 
 ## P2 — known code issues, not yet fixed (lower demo-visibility risk)
 
+- [ ] **`tracker.py`'s `consensus_plate()` can synthesize a plate string
+      that matches no actual OCR read, if a track's `plate_reads` ever mix
+      two different vehicles' reads (an IOU-overlap association merging a
+      second car into an existing track — e.g. one vehicle leaving a
+      queued spot right as another pulls into the same bbox within
+      `TRACK_TIMEOUT_MS`).** Found and investigated by an independent
+      project review (2026-09-11); locked in as a real, passing regression
+      test
+      (`test_consensus_plate_can_synthesize_a_string_that_matches_no_actual_read`),
+      not left silently unflagged. **Two fix attempts were tried and both
+      reverted, on evidence**: a post-hoc confidence penalty in
+      `consensus_plate()`, and a plate-agreement guard at association time
+      in `CameraTracker.update()` — both broke
+      `test_consensus_plate_isolates_higher_vote_share`/
+      `test_consensus_plate_confidence_is_vote_share_not_count`, which
+      correctly require a severely-disagreeing single stray misread of the
+      SAME vehicle to be outvoted, not treated as contamination; there is
+      no character-agreement threshold that separates that already-
+      required case from genuine two-vehicle contamination. A real fix
+      needs signal outside the plate string itself (e.g. an appearance-
+      embedding distance check between a candidate track's stored crop and
+      a new detection's crop before merging — a genuine `reid.py`-into-
+      `tracker.py` integration), not a small change — not attempted.
+      (`analytics/tracker.py`)
+
 - [ ] **RTSP discontinuity detection doesn't survive a reconnect** —
       `last_pts_ms` resets to `None` on every reconnect, so a scene-loop
       point that triggers a full reconnect (vs. a smooth PTS-backward
@@ -276,6 +397,42 @@ All three verified: real additive migration run against the actual
 accumulated `sentinel.db` (not a fresh DB) — both new columns and the new
 table created cleanly, no data loss. Full backend suite 53/53 passed;
 `npm run build`/`npm run lint` both clean, no new warnings.
+
+- [x] **Real ONVIF device discovery — built.** `streaming/onvif_discovery.py`:
+      WS-Discovery (UDP multicast Probe/ProbeMatch) + ONVIF Media SOAP
+      calls (`GetCapabilities` → `GetProfiles` → `GetStreamUri`), raw
+      hand-built SOAP/XML rather than a zeep-based client (small enough
+      protocol surface to avoid the heavier WSDL-parsing dependency).
+      Wired into `catalogue.py`'s `CatalogueClient.refresh()` as
+      ONVIF-first: tried on every refresh when `SENTINEL_ONVIF_ENABLED=true`
+      (default `false`), falling back to the existing sandbox HTTP
+      catalogue automatically and loudly-logged when no ONVIF device
+      responds — the sandbox's actual, permanent state (§13a: plain RTSP,
+      no ONVIF endpoint at all), so this is the expected fallback path,
+      not an error condition. XML parsing uses `defusedxml` (new dep) to
+      guard against XXE from untrusted device responses, per this repo's
+      untrusted-input rule. 14 new regression tests
+      (`tests/test_onvif_discovery.py`, mocked WS-Discovery/SOAP
+      exchanges — no live ONVIF device is reachable from this environment
+      or the sandbox to test against for real); full backend suite 84/84
+      passing (70 pre-existing + 14 new), run for real in a freshly
+      created `.venv` (none existed in this environment beforehand).
+      **Honestly unverified against a live ONVIF-conformant camera** —
+      that remains the one open gap before this could be trusted in an
+      actual departmental deployment; see
+      `docs/models/model-2-unified-viewing/IMPLEMENTATION_PLAN.md`'s M2-4.
+
+- [x] **Minor hardening batch — done 2026-09-11.** `/health` now reports
+      `active_camera_worker_count` (an int) instead of the raw camera-ID
+      list to an unauthenticated caller; `VehicleEvent` gained a separate
+      `ingested_at` column alongside `observed_at` (additive migration,
+      verified against a real on-disk pre-migration DB, not just a fresh
+      one); a minimal in-process rate limiter (`api/rate_limit.py`, fixed-
+      window per API key/IP, no new infrastructure) now guards every route
+      except `/health` and `/live/*`; `architecture.drawio` updated to
+      include the Model 3 federation layer and ONVIF discovery (previously
+      absent — stale relative to the actual codebase). 5 new tests
+      (`test_rate_limit.py`); full backend suite 100/100 passing.
 
 ## Deliberately not doing (see STRATEGY.md's OUT list — don't silently build these)
 
