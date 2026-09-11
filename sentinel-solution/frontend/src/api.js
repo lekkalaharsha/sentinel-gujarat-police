@@ -111,4 +111,20 @@ export const api = {
   retentionPolicy: () => request("/admin/retention-policy"),
   triggerPurge: () => request("/admin/purge", { method: "POST" }),
   recentDetections: (limit = 20) => request(`/vehicle/recent?limit=${limit}`),
+
+  federationCorrelations: () => request("/federation/correlations"),
+  downloadFederationReportPdf: async () => {
+    const apiKey = getApiKey();
+    const headers = {};
+    if (apiKey) headers["X-Sentinel-API-Key"] = apiKey;
+    const res = await fetch(`${API_BASE}/federation/correlations/export.pdf`, { headers });
+    if (!res.ok) throw new Error(`${res.status} failed to generate PDF`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "sentinel_federation_report.pdf";
+    a.click();
+    URL.revokeObjectURL(url);
+  },
 };

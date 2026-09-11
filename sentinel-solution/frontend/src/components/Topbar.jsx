@@ -45,7 +45,7 @@ export default function Topbar({ health, activeAlertCount, onSearchSubmit, onAut
       <div className="stat-chip"><span className={`dot2 ${health ? "on" : "off"}`} /> System <b>{health ? "NOMINAL" : "UNKNOWN"}</b></div>
       <div className="stat-chip">
         Cameras <b>{health?.catalogue_size ?? "—"}</b>
-        {health && <> · <span style={{ color: "var(--confirmed)" }}>{health.active_camera_workers?.length ?? 0} active</span></>}
+        {health && <> · <span style={{ color: "var(--confirmed)" }}>{health.active_camera_worker_count ?? 0} active</span></>}
       </div>
       <div className="stat-chip"><span className="dot2 off" /> Alerts <b>{activeAlertCount ?? "—"}</b></div>
 

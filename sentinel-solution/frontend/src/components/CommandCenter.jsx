@@ -27,7 +27,7 @@ export default function CommandCenter({ cameras, health, gapAnalysis, alerts, ro
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  const onlineCount = health?.active_camera_workers?.length ?? 0;
+  const onlineCount = health?.active_camera_worker_count ?? 0;
   const totalCount = health?.catalogue_size ?? 0;
   const activeAlerts = (alerts || []).filter((a) => (a.status || "new") !== "resolved" && (a.status || "new") !== "dismissed");
   const unhealthyCount = gapAnalysis?.unhealthy?.length ?? 0;

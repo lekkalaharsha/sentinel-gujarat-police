@@ -11,6 +11,7 @@ import CameraGridView from "./components/CameraGridView";
 import LiveCameraView from "./components/LiveCameraView";
 import AlertsView from "./components/AlertsView";
 import WatchlistView from "./components/WatchlistView";
+import FederationDashboard from "./components/FederationDashboard";
 import SearchView from "./components/SearchView";
 import InvestigationsView from "./components/InvestigationsView";
 import EvidenceView from "./components/EvidenceView";
@@ -143,6 +144,7 @@ export default function App() {
             {view === "grid" && <CameraGridView cameras={cameras} />}
             {view === "alerts" && <AlertsView />}
             {view === "watchlist" && <WatchlistView />}
+            {view === "federation" && <FederationDashboard onOpenPlate={openVehicle} />}
             {view === "search" && <SearchView onOpenPlate={openVehicle} />}
             {view === "investigations" && <InvestigationsView />}
             {view === "evidence" && <EvidenceView />}

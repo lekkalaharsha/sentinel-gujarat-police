@@ -4,6 +4,11 @@ import {
   IconSettings, IconShield,
 } from "../icons";
 
+// IconLayers doubles as the Model 3 federation icon below (no dedicated
+// icon exists yet, and this repo's icon set is deliberately small — see
+// icons.jsx) — matches the reuse-over-new-abstraction convention already
+// used for "Architecture" above.
+
 const NAV = [
   { group: "Operations", items: [
     { id: "command", label: "Command Center", icon: IconGrid },
@@ -16,6 +21,7 @@ const NAV = [
   { group: "Monitoring", items: [
     { id: "alerts", label: "Alerts", icon: IconAlert },
     { id: "watchlist", label: "Watchlist", icon: IconEye },
+    { id: "federation", label: "Federation (Model 3)", icon: IconLayers },
   ]},
   { group: "Investigation", items: [
     { id: "search", label: "Search", icon: IconSearch },

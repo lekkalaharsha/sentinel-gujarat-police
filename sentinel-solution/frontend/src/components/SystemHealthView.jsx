@@ -14,7 +14,7 @@ export default function SystemHealthView({ health, gapAnalysis }) {
   }, []);
 
   const onlinePct = gapAnalysis?.catalogue_size
-    ? Math.round(((health?.active_camera_workers?.length ?? 0) / gapAnalysis.catalogue_size) * 100)
+    ? Math.round(((health?.active_camera_worker_count ?? 0) / gapAnalysis.catalogue_size) * 100)
     : null;
 
   return (
