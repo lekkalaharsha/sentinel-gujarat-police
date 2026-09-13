@@ -52,7 +52,7 @@ prs.slide_width = SLIDE_W
 prs.slide_height = SLIDE_H
 BLANK = prs.slide_layouts[6]
 PAGE_NO = [0]
-TOTAL = 20
+TOTAL = 21
 
 
 def add_slide():
@@ -262,24 +262,25 @@ txt(s, Inches(10.6), Inches(6.22), Inches(1.85), Inches(0.4), "₹51,00,000", si
 # ============================================================ 2 — AGENDA
 s = content_slide("Roadmap", "Agenda")
 agenda = [
-    ("01", "The real problem"), ("02", "Model & justification"), ("03", "Solution overview"),
-    ("04", "Architecture"), ("05", "AI analytics pipeline"), ("06", "Evidence tiers, measured"),
-    ("07", "Governed cross-camera linking"), ("08", "Watchlist & alerts"), ("09", "Security & DPDP"),
-    ("10", "Scalability"), ("11", "Test case & benefits"), ("12", "Honest gaps"),
+    ("01", "The real problem"), ("02", "Positioning"), ("03", "Prior art & research"),
+    ("04", "Model & justification"), ("05", "Solution overview"), ("06", "Architecture"),
+    ("07", "AI analytics pipeline"), ("08", "Evidence tiers, measured"), ("09", "Governed cross-camera linking"),
+    ("10", "Watchlist & alerts"), ("11", "Security & DPDP"), ("12", "Scalability"),
+    ("13", "Test case & benefits"), ("14", "Honest gaps"),
 ]
 cols = 2
-cw, ch = Inches(5.9), Inches(0.74)
+cw, ch = Inches(5.9), Inches(0.62)
 for i, (num, label) in enumerate(agenda):
     col = i % cols; row = i // cols
     x = Inches(0.6) + col * (cw + Inches(0.3))
-    y = Inches(1.6) + row * (ch + Inches(0.1))
+    y = Inches(1.5) + row * (ch + Inches(0.09))
     rrect(s, x, y, cw, ch, fill=SURFACE, radius=0.14)
     rect(s, x, y, Inches(0.09), ch, fill=BLUE if i % 3 else AMBER)
-    txt(s, x + Inches(0.28), y, Inches(0.8), ch, num, size=19, color=SURFACE2, bold=True, font=F_TITLE, anchor=MSO_ANCHOR.MIDDLE)
-    txt(s, x + Inches(1.05), y, Inches(4.4), ch, label, size=14.5, color=INK, bold=True, font=F_BODY_SB, anchor=MSO_ANCHOR.MIDDLE)
+    txt(s, x + Inches(0.24), y, Inches(0.75), ch, num, size=17, color=SURFACE2, bold=True, font=F_TITLE, anchor=MSO_ANCHOR.MIDDLE)
+    txt(s, x + Inches(0.95), y, Inches(4.5), ch, label, size=13, color=INK, bold=True, font=F_BODY_SB, anchor=MSO_ANCHOR.MIDDLE)
 
 # ============================================================ 3 — PROBLEM
-s = content_slide("The Real Problem", "Gujarat has the cameras and the ANPR. It's an integration and evidence problem.", title_size=25)
+s = content_slide("The Real Problem", "Gujarat has the cameras and the ANPR. It's an integration and evidence problem.", title_size=22)
 stats = [("7,078", "Cameras already live under\nVISWAS / NETRAM / TRINETRA"), ("3.8%", "of ANPR-detected violations\nreach enforcement — CAG 2025"), ("26", "Departments,\nindependent systems"), ("0", "Systems today that explain\nwhy a cross-camera link was made")]
 cw = Inches(2.85)
 for i, (num, label) in enumerate(stats):
@@ -317,9 +318,42 @@ txt(s, Inches(0.6), Inches(5.15), Inches(12.1), Inches(1.7),
     "about what is and isn't proven is the stronger pitch here, not a bigger tracking claim.",
     size=14, color=MUTED, line_spacing=1.35, font=F_BODY_L)
 
+# ============================================================ 4b — PRIOR ART & RESEARCH
+s = content_slide("Prior Art & Research", "We checked — competitors' real moat is certification and integration, not AI", title_size=21)
+research_cards = [
+    ("Gandhinagar already has an ICCC",
+     "100+ Indian cities run Integrated Command & Control Centres — CCTV + sensors + GIS + CCTNS "
+     "criminal-DB linkage. Gandhinagar, this event's own venue, runs one. Sentinel is positioned as a "
+     "layer that feeds/sits above ICCC/TRINETRA/NETRAM — never pitched as a replacement.",
+     "Source: India ICCC / Safe City research, §5"),
+    ("Incumbents' moat isn't the AI",
+     "Staqu, Videonetics, Vehant and Innefu already ship real ANPR/tracking. What actually gates "
+     "government sales is STQC/ISO certification, live VAHAN/Sarthi/e-Challan integrations, and "
+     "deployment track record — not detection accuracy.",
+     "Source: Competitive Teardown, “most important finding”"),
+    ("Our governance model has global precedent",
+     "UK's National ANPR Service (11,000 cameras, ~50M reads/day) mandates 12-month retention and "
+     "audits every query — and drew criticism when oversight was weak. Sentinel's purpose-bound audit "
+     "log and enforced retention follow this precedent, not invent it.",
+     "Source: UK NADC → NSAP research, §6"),
+]
+rcw = Inches(3.95); rx0 = Inches(0.6); rch = Inches(3.55)
+for i, (title, desc, src) in enumerate(research_cards):
+    x = rx0 + i * (rcw + Inches(0.15))
+    rrect(s, x, Inches(1.65), rcw, rch, fill=SURFACE)
+    rect(s, x, Inches(1.65), rcw, Inches(0.06), fill=BLUE)
+    txt(s, x + Inches(0.25), Inches(1.85), rcw - Inches(0.5), Inches(0.65), title, size=13.5, color=INK, bold=True, line_spacing=1.1, font=F_BODY_SB)
+    txt(s, x + Inches(0.25), Inches(2.55), rcw - Inches(0.5), Inches(2.1), desc, size=11, color=MUTED, line_spacing=1.28, font=F_BODY_L)
+    txt(s, x + Inches(0.25), Inches(4.75), rcw - Inches(0.5), Inches(0.4), src, size=9.5, color=BLUE_DEEP, italic=True, font=F_BODY)
+txt(s, Inches(0.6), Inches(5.45), Inches(12.1), Inches(1.5),
+    "Conclusion, stated plainly: Sentinel's defensible wedge is an open, explainable architecture — "
+    "it wins pilots, not yet procurement, until certification gates are cleared. That honesty is more "
+    "credible to this jury than claiming the technology alone is the moat.",
+    size=13.5, color=NAVY, bold=True, line_spacing=1.32, font=F_BODY_L)
+
 # ============================================================ 5 — MODEL
 s = content_slide("Solution Model", "Model 1 + Model 2 + Model 3 — a real hybrid, built and tested")
-cards = [("01", "Registry & GIS", "Mandatory foundation", "done"), ("02", "Unified Viewing", "Direct integration, no middleware", "done"), ("03", "VMS Federation", "Built & tested — Sentinel + NYC Open Data", "done")]
+cards = [("01", "Registry & GIS", "Mandatory foundation", "done"), ("02", "Unified Viewing", "Direct integration, ≥2 independent systems — Gujarat sandbox + Caltrans D3 public CCTV API", "done"), ("03", "VMS Federation", "Built & tested — Sentinel + NYC Open Data", "done")]
 cw = Inches(3.95); x0 = Inches(0.6)
 for i, (num, title, sub, kind) in enumerate(cards):
     x = x0 + i * (cw + Inches(0.15))
@@ -340,9 +374,9 @@ txt(s, Inches(0.6), Inches(5.4), Inches(12.1), Inches(1.3),
     size=13.5, color=MUTED, line_spacing=1.3, font=F_BODY_L)
 
 # ============================================================ 6 — SOLUTION OVERVIEW
-s = content_slide("Solution Overview", "The genuine innovation")
+s = content_slide("Solution Overview", "A governance layer that refuses to let inference pass as fact", title_size=24)
 txt(s, Inches(0.6), Inches(1.58), Inches(12.1), Inches(0.5),
-    "Not a stronger tracking claim — a governance layer that refuses to let inference pass as fact.",
+    "Four concrete controls, not a stronger tracking claim — each one enforced in code below.",
     size=15.5, color=MUTED, font=F_BODY_L)
 inn = [
     ("A", "Evidence tiers, enforced", "CONFIRMED / PROBABLE / LEAD ONLY — a LEAD ONLY link can never be exported as evidence."),
@@ -436,7 +470,7 @@ for i, (title, desc) in enumerate(items):
     txt(s, x + Inches(0.2), y + Inches(0.95), cw - Inches(0.4), Inches(1.1), desc, size=10.5, color=MUTED, line_spacing=1.2, font=F_BODY_L)
 
 # ============================================================ 9 — AI PIPELINE (real diagram)
-s = content_slide("AI Video Analytics", "Detection through cross-camera identity", title_size=27)
+s = content_slide("AI Video Analytics", "Plate-first, appearance-second, geo-gated — never one black-box Re-ID model", title_size=21)
 stages = [
     ("Detect", "YOLOv8n", "done"), ("Locate\nplate", "YOLOv11 (trained)", "done"), ("Enhance", "CLAHE", "done"),
     ("OCR", "PaddleOCR", "done"), ("Track", "ByteTrack", "done"), ("Re-ID", "Colour hist.", "partial"), ("Identity", "Plate-first", "done"),
@@ -466,15 +500,37 @@ for label, kind in [("Verified", "done"), ("Partial", "partial")]:
     status_dot(s, legend_x + Inches(0.08), Inches(3.85), kind=kind, d=Inches(0.16))
     txt(s, legend_x + Inches(0.25), Inches(3.73), Inches(1.3), Inches(0.3), label, size=11, color=MUTED, font=F_BODY_L)
     legend_x += Inches(1.5)
-txt(s, Inches(0.6), Inches(4.35), Inches(12.1), Inches(0.4), "Also captured per sighting: colour, type, dimensions, dwell/speed/direction",
-    size=13, color=INK, font=F_BODY_SB)
-txt(s, Inches(0.6), Inches(4.85), Inches(12.1), Inches(0.35), "Not built: make/model classification — no open-source Indian-market model exists; stated, not faked.",
-    size=12, color=MUTED, italic=True, font=F_BODY_L)
-txt(s, Inches(0.6), Inches(5.6), Inches(12.1), Inches(1.0),
+txt(s, Inches(0.6), Inches(4.26), Inches(12.1), Inches(0.28), "Also captured per sighting: colour, type, dimensions, dwell/speed/direction",
+    size=12.5, color=INK, font=F_BODY_SB)
+
+mech_cards = [
+    ("1", "Consensus-vote plate fusion",
+     "Position-weighted character vote across every frame's OCR read, not exact-string majority — one "
+     "misread character can't outvote an otherwise-agreeing plate. Real case: cam06, 4/5 frames agree, "
+     "0.81 confidence."),
+    ("2", "Hard geo-feasibility gate",
+     "An appearance-only cross-camera match is accepted only if it also clears a physical feasibility "
+     "check — haversine distance ÷ elapsed time vs. a plausible max speed. Infeasible candidates are "
+     "excluded outright, not just down-scored."),
+]
+mcw = Inches(5.95); mch = Inches(1.12); mx0 = Inches(0.6); my0 = Inches(4.6)
+for i, (tag, title, desc) in enumerate(mech_cards):
+    x = mx0 + i * (mcw + Inches(0.2))
+    rrect(s, x, my0, mcw, mch, fill=SURFACE)
+    rect(s, x, my0, Inches(0.08), mch, fill=BLUE)
+    autoshape(s, MSO_SHAPE.OVAL, x + Inches(0.26), my0 + Inches(0.18), Inches(0.42), Inches(0.42), fill=NAVY)
+    txt(s, x + Inches(0.26), my0 + Inches(0.18), Inches(0.42), Inches(0.42), tag, size=15, color=WHITE, bold=True,
+        align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE, font=F_TITLE)
+    txt(s, x + Inches(0.85), my0 + Inches(0.13), mcw - Inches(1.1), Inches(0.32), title, size=13, color=INK, bold=True, font=F_BODY_SB)
+    txt(s, x + Inches(0.85), my0 + Inches(0.46), mcw - Inches(1.1), Inches(0.62), desc, size=10, color=MUTED, line_spacing=1.15, font=F_BODY_L)
+
+txt(s, Inches(0.6), Inches(5.86), Inches(12.1), Inches(0.28), "Not built: make/model classification — no open-source Indian-market model exists; stated, not faked.",
+    size=11.5, color=MUTED, italic=True, font=F_BODY_L)
+txt(s, Inches(0.6), Inches(6.18), Inches(12.1), Inches(0.85),
     "Real-footage result: a real sandbox vehicle's plate (GJ01RP6128) read correctly and confidently on "
     "camera cam06, verified through the actual production accept-logic. A single-camera read, stated as "
     "exactly that — not evidence of cross-camera tracking.",
-    size=13, color=GREEN, bold=True, line_spacing=1.3, font=F_BODY_L)
+    size=12.5, color=GREEN, bold=True, line_spacing=1.25, font=F_BODY_L)
 
 # ============================================================ 10 — EVIDENCE TIERS
 s = content_slide("Evidence Tiers", "We measured our own weakest link — and refuse to hide it")
@@ -559,7 +615,7 @@ bullets(s, Inches(6.85), Inches(4.4), Inches(5.85), Inches(2.2), [
 ], size=13.5, space_after=12, font=F_BODY_L)
 
 # ============================================================ 13 — SECURITY
-s = content_slide("Governance", "Security, RBAC & DPDP-aligned posture")
+s = content_slide("Governance", "RBAC and retention enforced in code — not policy-on-paper", title_size=24)
 items = [
     ("Real RBAC", "Genuine 401/403 — not decoration"),
     ("No face recognition", "Deliberate — DPDP risk + documented bias"),
@@ -582,7 +638,7 @@ txt(s, Inches(0.6), Inches(5.35), Inches(12.1), Inches(0.4),
     size=13, color=MUTED, italic=True, font=F_BODY_L)
 
 # ============================================================ 14 — TECH STACK
-s = content_slide("Technology", "Open source, end to end")
+s = content_slide("Technology", "Open source, end to end — meets the hackathon's requirement in full", title_size=23)
 groups = [
     ("Backend & data", ["FastAPI", "SQLAlchemy", "PostgreSQL / PostGIS"]),
     ("Computer vision", ["OpenCV", "YOLOv8", "PaddleOCR", "ByteTrack"]),
@@ -601,10 +657,10 @@ for i, (grp, tools) in enumerate(groups):
         rrect(s, x + Inches(0.2), y, cw - Inches(0.4), Inches(0.55), fill=(WHITE if not dim else SURFACE), line=LINE, line_w=Pt(1))
         txt(s, x + Inches(0.2), y, cw - Inches(0.4), Inches(0.55), t, size=12.5, color=(INK if not dim else MUTED), align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE, font=F_BODY_SB)
         y += Inches(0.68)
-txt(s, Inches(0.6), Inches(6.35), Inches(12.1), Inches(0.4), "Meets the hackathon's Open Source Requirement in full.", size=13, color=MUTED, italic=True, font=F_BODY_L)
+txt(s, Inches(0.6), Inches(6.35), Inches(12.1), Inches(0.4), "No proprietary/closed-source component anywhere in the analytics or serving path.", size=13, color=MUTED, italic=True, font=F_BODY_L)
 
 # ============================================================ 15 — SCALABILITY
-s = content_slide("Scalability", "~30-camera pilot → ~80,000 statewide")
+s = content_slide("Scalability", "Same codebase, four phased tiers — pilot to statewide, no rewrite", title_size=23)
 stats2 = [("~4,000", "GPU-class edge units\nat full build-out"), ("640 Mbps", "Structured events —\nnot 160 Gbps raw video"), ("3", "Storage tiers:\nhot / warm / cold"), ("4", "Phased rollout stages,\nsame codebase")]
 cw = Inches(2.85)
 for i, (num, label) in enumerate(stats2):
@@ -627,11 +683,11 @@ txt(s, Inches(0.6), Inches(5.5), Inches(12.1), Inches(0.9),
     size=13, color=MUTED, italic=True, line_spacing=1.3, font=F_BODY_L)
 
 # ============================================================ 16 — TEST CASE STATUS
-s = content_slide("Evaluation Readiness", "Live test case status")
+s = content_slide("Evaluation Readiness", "7 of 9 live test-case items done end-to-end on the real sandbox", title_size=23)
 rows2 = [
     ("Onboard ~50 cameras", "done"), ("Track by plate", "done"), ("Timestamped route", "done"),
     ("Watchlist cross-check", "done"), ("Real-time alert", "done"), ("Continuity w/o plate (LEAD ONLY)", "partial"),
-    ("Real-footage OCR accuracy", "done"), ("§63-oriented evidence export", "gap"), ("Camera ANPR-suitability score", "gap"),
+    ("Real-footage OCR accuracy", "done"), ("§63-oriented evidence export", "gap"), ("Camera ANPR-suitability score", "done"),
 ]
 cw, ch = Inches(3.93), Inches(0.85)
 for i, (label, kind) in enumerate(rows2):
@@ -646,7 +702,7 @@ txt(s, Inches(0.6), Inches(5.65), Inches(12.1), Inches(0.5),
     size=13.5, color=GREEN, bold=True, font=F_BODY_SB)
 
 # ============================================================ 17 — OPERATIONAL BENEFITS
-s = content_slide("Operational Benefits", "Who this helps, and how")
+s = content_slide("Operational Benefits", "Every stakeholder gets less guesswork, not more dashboards", title_size=24)
 groups2 = [
     ("Investigators", ["One search, even with bad reads", "See why a link was made, and how weak", "Provenance package for legal review — §63-oriented"]),
     ("Command", ["Live GIS + gap analysis", "Auditable alert lifecycle", "Cross-camera route patterns"]),
@@ -663,7 +719,7 @@ for i, (grp, items) in enumerate(groups2):
 # ============================================================ 18 — HONEST GAPS
 s = content_slide("Honest Gaps", "Stated, not hidden — by design")
 gaps = [
-    "§63 evidence certificate export — not yet built", "Camera ANPR-suitability scoring — not yet built",
+    "§63 evidence certificate export — not yet built",
     "Face recognition — deliberate exclusion", "Full 80k-camera physical ingestion",
     "Live ONVIF device validated — mocked-tests only", "WHEP low-latency preview",
     "Appearance-Re-ID accuracy — measured, not fixed", "Road-network routing & pruning",
