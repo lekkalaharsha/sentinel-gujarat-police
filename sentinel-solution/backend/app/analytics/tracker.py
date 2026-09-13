@@ -27,6 +27,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 from .attributes import VehicleAttributes
+from .reid import ColorHistogramEncoder, ReIdEncoder, cosine_similarity
 
 BBox = Tuple[float, float, float, float]
 
@@ -35,6 +36,22 @@ IOU_MATCH_THRESHOLD = 0.3
 # considered gone (left the frame, or the read gap is too large to trust
 # as continuous). Finalize and flush rather than hold forever.
 TRACK_TIMEOUT_MS = 3000.0
+# Matches identity.py's conservative cross-camera similarity floor.  This is
+# only a guard against joining visibly different vehicles when fallback IOU
+# overlaps; it never rejects a same-track OCR misread based on plate text.
+# Known limitation, inherited from the same measurement that already
+# constrains identity.py's use of this threshold (see
+# scripts/calibrate_embedding_threshold.py's 2026-09-10 run, TASKS.md P1):
+# ColorHistogramEncoder scored 41.87% of 3,000 real confirmed-DIFFERENT
+# vehicle crop pairs at >= 0.80 similarity. That means this guard reliably
+# catches only grossly dissimilar vehicles (see
+# test_iou_overlap_with_visibly_different_crop_starts_a_new_track, which
+# uses solid black vs. solid white crops) and will likely still miss the
+# realistic contamination case — two similarly-colored/same-class vehicles
+# swapping in the same queued spot. A real fix needs a stronger encoder,
+# not a threshold change on this one (raising it further would reject
+# legitimate same-vehicle lighting/angle variation instead).
+IOU_ASSOCIATION_MIN_REID_SIMILARITY = 0.80
 
 
 def _iou(a: BBox, b: BBox) -> float:
@@ -211,9 +228,22 @@ class CameraTracker:
     """One instance per camera. Not thread-safe by itself — the pipeline
     calls it from a single frame-handling context per camera worker."""
 
-    def __init__(self):
+    def __init__(self, reid_encoder: ReIdEncoder | None = None):
         self._active: List[Track] = []
         self._next_id = 1
+        self._reid_encoder = reid_encoder or ColorHistogramEncoder()
+
+    def _appearance_compatible(self, track: Track, crop: Optional[np.ndarray]) -> bool:
+        """Reject an IOU-only merge only when both real crops disagree.
+
+        Missing/empty crops leave the established IOU fallback intact rather
+        than inventing an appearance result.  ByteTrack-owned associations do
+        not pass here: their external ID is the association authority.
+        """
+        if track.best_crop is None or crop is None or track.best_crop.size == 0 or crop.size == 0:
+            return True
+        similarity = cosine_similarity(self._reid_encoder.encode(track.best_crop), self._reid_encoder.encode(crop))
+        return similarity >= IOU_ASSOCIATION_MIN_REID_SIMILARITY
 
     def update(
         self,
@@ -245,7 +275,11 @@ class CameraTracker:
                 score = _iou(track.bbox, bbox)
                 if score > best_iou:
                     best_track, best_iou = track, score
-            if best_track is not None and best_iou >= IOU_MATCH_THRESHOLD:
+            if (
+                best_track is not None
+                and best_iou >= IOU_MATCH_THRESHOLD
+                and self._appearance_compatible(best_track, crop)
+            ):
                 best_track.external_track_id = external_track_id
                 best_track.add_observation(bbox, pts_ms, detection_confidence, attrs, plate_result, crop)
                 return best_track
@@ -260,7 +294,11 @@ class CameraTracker:
                 if score > best_iou:
                     best_track, best_iou = track, score
 
-            if best_track is not None and best_iou >= IOU_MATCH_THRESHOLD:
+            if (
+                best_track is not None
+                and best_iou >= IOU_MATCH_THRESHOLD
+                and self._appearance_compatible(best_track, crop)
+            ):
                 best_track.add_observation(bbox, pts_ms, detection_confidence, attrs, plate_result, crop)
                 return best_track
 

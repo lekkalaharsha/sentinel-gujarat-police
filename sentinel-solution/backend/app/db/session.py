@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import sessionmaker
 
 from .. import config
@@ -14,6 +14,20 @@ engine = create_engine(
     config.DATABASE_URL,
     connect_args={"check_same_thread": False} if config.DATABASE_URL.startswith("sqlite") else {},
 )
+
+
+def _configure_sqlite_connection(dbapi_connection, _connection_record) -> None:
+    """Bounded writer contention for the pilot's concurrent camera workers."""
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA journal_mode=WAL")
+    finally:
+        cursor.close()
+
+
+if config.DATABASE_URL.startswith("sqlite"):
+    event.listen(engine, "connect", _configure_sqlite_connection)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 # Columns added after the initial schema shipped. `create_all` only creates

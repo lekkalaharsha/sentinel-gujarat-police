@@ -34,6 +34,7 @@ def test_pipeline_persists_real_detector_counts_per_window(session, monkeypatch)
     monkeypatch.setattr(pipeline_module, "SessionLocal", Session)
     pipeline = AnalyticsPipeline(detector_factory=_Detector, plate_reader=StubPlateReader())
     pipeline.process(Frame("cam_density", np.zeros((80, 80, 3), dtype=np.uint8), 1000.0, False))
+    pipeline.flush_density("cam_density")
 
     row = session.query(CameraDensityWindow).one()
     assert row.camera_id == "cam_density"
