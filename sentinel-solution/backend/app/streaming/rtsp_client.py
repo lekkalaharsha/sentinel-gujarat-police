@@ -89,6 +89,15 @@ class RtspCameraWorker:
             delay = config.RECONNECT_INITIAL_DELAY_S  # reset backoff on success
             consecutive_read_failures = 0
             self.connected = True
+            # A fresh cv2.VideoCapture is a new stream from the downstream
+            # tracker's point of view even though last_pts_ms was cleared
+            # below on the previous disconnect — force the FIRST frame after
+            # every (re)connect to report discontinuity=True so pipeline.py
+            # resets per-camera tracker/ByteTrack state instead of computing
+            # a track continuation across the reconnect gap. Without this,
+            # last_pts_ms being None made the discontinuity check silently
+            # False on exactly the frame that most needed it flagged.
+            just_reconnected = True
 
             while not self._stop.is_set():
                 ok, frame = cap.read()
@@ -108,7 +117,8 @@ class RtspCameraWorker:
 
                 # Scene discontinuity detection: the sandbox loops each
                 # recording, which looks like PTS resetting/jumping backward.
-                discontinuity = last_pts_ms is not None and pts_ms < last_pts_ms
+                discontinuity = just_reconnected or (last_pts_ms is not None and pts_ms < last_pts_ms)
+                just_reconnected = False
                 last_pts_ms = pts_ms
 
                 try:
