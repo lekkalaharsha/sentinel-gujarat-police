@@ -162,6 +162,16 @@ def _sync_camera_health() -> None:
             registry.is_healthy = status["connected"] and not stale
             if status["last_frame_at"] is not None:
                 registry.last_seen_live_at = dt.datetime.utcfromtimestamp(status["last_frame_at"])
+            # A connected, non-stale stream can still be feeding a broken
+            # analytics pipeline (found 2026-09-13: torch/torchvision ABI
+            # mismatch failed every detection call while the stream stayed
+            # perfectly healthy) — surface that separately rather than
+            # letting stream connectivity alone say "ok".
+            registry.analytics_degraded = status["analytics_degraded"]
+            if status["last_analytics_success_at"] is not None:
+                registry.last_analytics_success_at = dt.datetime.utcfromtimestamp(
+                    status["last_analytics_success_at"]
+                )
         # Cameras that were live before but have no active worker anymore
         # (dropped from the catalogue) are unhealthy, not silently unknown.
         active_ids = set(snapshot.keys())
@@ -256,12 +266,19 @@ def on_startup():
 
 @app.get("/health")
 def health():
+    snapshot = stream_manager.health_snapshot()
+    degraded_count = sum(1 for s in snapshot.values() if s["analytics_degraded"])
     return {
-        "status": "ok",
+        # A worker count up with zero degraded is a real "ok"; a worker
+        # count up with some/all degraded means streams are connected but
+        # analytics is silently failing on them (found 2026-09-13) — do
+        # not collapse that distinction into a single "ok" boolean.
+        "status": "ok" if degraded_count == 0 else "degraded",
         # A count, not the camera-ID list — /health is unauthenticated by
         # design (basic liveness probe), so it shouldn't hand an anonymous
         # caller the actual camera inventory.
         "active_camera_worker_count": len(stream_manager.active_camera_ids),
+        "analytics_degraded_camera_count": degraded_count,
         "catalogue_size": len(catalogue.cameras),
         # Real class names, not booleans — anything starting with "Stub" is
         # the honest no-op fallback (see main.py's _build_* functions).

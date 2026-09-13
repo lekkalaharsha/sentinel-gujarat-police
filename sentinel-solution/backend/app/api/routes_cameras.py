@@ -88,6 +88,18 @@ def _merged_camera_view(cam_id: str, registry, live_info, include_raw_urls: bool
         "latitude": registry.latitude if registry else None,
         "longitude": registry.longitude if registry else None,
         "is_healthy": registry.is_healthy if registry else None,
+        # Distinct from is_healthy on purpose: is_healthy is stream
+        # connectivity only. A camera can be "connected, not stale" while
+        # its analytics calls are all failing (found 2026-09-13) — that
+        # must be visible here, not folded into is_healthy's single bool
+        # (CLAUDE.md 24.11: a polished UI must not conceal degraded
+        # backend state).
+        "analytics_degraded": registry.analytics_degraded if registry else None,
+        "last_analytics_success_at": (
+            registry.last_analytics_success_at.isoformat()
+            if registry and registry.last_analytics_success_at
+            else None
+        ),
         "last_seen_live_at": registry.last_seen_live_at.isoformat() if registry and registry.last_seen_live_at else None,
         "is_restricted_zone": registry.is_restricted_zone if registry else False,
         "expected_direction_deg": registry.expected_direction_deg if registry else None,

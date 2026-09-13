@@ -42,6 +42,8 @@ _ADDITIVE_MIGRATIONS = [
     ("vehicle_event", "ingested_at", "DATETIME"),
     ("alert", "evidence_class", "VARCHAR"),
     ("alert", "evidence_class_reason", "VARCHAR"),
+    ("camera_registry", "analytics_degraded", "BOOLEAN"),
+    ("camera_registry", "last_analytics_success_at", "DATETIME"),
 ]
 
 

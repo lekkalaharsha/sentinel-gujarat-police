@@ -84,6 +84,14 @@ class CameraRegistry(Base):
     # health status we have no evidence for. Only main.py's health-sync loop
     # (backed by the real RTSP worker's connection state) ever sets this.
     is_healthy = Column(Boolean, nullable=True, default=None)
+    # Separate from is_healthy on purpose (found 2026-09-13): is_healthy
+    # only reflects RTSP stream connectivity. A real torch/torchvision ABI
+    # mismatch made the analytics pipeline fail on every frame while the
+    # stream itself stayed connected the whole time, so is_healthy alone
+    # can mask a camera that is receiving frames but producing zero
+    # detections. See streaming/manager.py's ANALYTICS_DEGRADED_ERROR_THRESHOLD.
+    analytics_degraded = Column(Boolean, nullable=True, default=None)
+    last_analytics_success_at = Column(DateTime, nullable=True)
 
     # Named-anomaly-alert config (see analytics/anomaly.py). Both opt-in,
     # per-camera, set at onboarding time — a camera with neither set never
