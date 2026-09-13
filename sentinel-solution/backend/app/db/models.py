@@ -334,5 +334,12 @@ class Alert(Base):
     # for the action, mirroring AuditLog's purpose-bound logging ethos.
     status_updated_by = Column(String, nullable=True)
     status_updated_at = Column(DateTime, nullable=True)
+    # Evidence class of the VehicleEvent that triggered this alert, snapshotted
+    # at raise time (see analytics/evidence_class.py). Nullable: legacy alerts
+    # predate this column and anomaly alerts don't carry a plate read at all.
+    # Persisted rather than re-derived on read so the UI never has to trust a
+    # client-side recomputation of a safety-relevant label.
+    evidence_class = Column(String, nullable=True)
+    evidence_class_reason = Column(String, nullable=True)
 
     camera = relationship("CameraRegistry")

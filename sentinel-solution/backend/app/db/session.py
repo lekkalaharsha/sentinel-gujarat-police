@@ -40,6 +40,8 @@ _ADDITIVE_MIGRATIONS = [
     ("camera_registry", "install_date", "DATETIME"),
     ("camera_registry", "coverage_radius_m", "FLOAT"),
     ("vehicle_event", "ingested_at", "DATETIME"),
+    ("alert", "evidence_class", "VARCHAR"),
+    ("alert", "evidence_class_reason", "VARCHAR"),
 ]
 
 

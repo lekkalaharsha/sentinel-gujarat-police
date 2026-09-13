@@ -38,6 +38,7 @@ from ..db.session import SessionLocal
 from ..streaming.rtsp_client import Frame
 from ..watchlist.service import watchlist_service
 from .anomaly import raise_anomaly_alerts
+from . import evidence_class as evclass
 from .anpr import PlateReader
 from .attributes import MakeModelClassifier, StubMakeModelClassifier, extract_attributes
 from .detector import VehicleDetector
@@ -232,8 +233,24 @@ class AnalyticsPipeline:
                 event.crop_path = self._save_crop(event.id, track.best_crop)
                 session.commit()
 
-                if identity.plate:
-                    watchlist_service.raise_alert_if_matched(session, identity.plate, camera_id, event.id)
+                # Gate on THIS event's own evidence class, not identity.plate:
+                # identity.plate can be set from a DIFFERENT, earlier camera's
+                # read, so checking it here would raise a plate-matched alert
+                # off a sighting that never read a plate itself (a LEAD_ONLY
+                # appearance link riding on another sighting's confirmed
+                # plate). Only a sighting that read and validated its own
+                # plate (CONFIRMED) may trigger a watchlist alert — see
+                # evidence_class.py and DECISION_REVIEW_2026-09-11.md.
+                sighting_class = evclass.classify(event.plate, event.link_method)
+                if sighting_class == evclass.CONFIRMED:
+                    watchlist_service.raise_alert_if_matched(
+                        session,
+                        event.plate,
+                        camera_id,
+                        event.id,
+                        evidence_class=sighting_class,
+                        evidence_class_reason=evclass.describe(sighting_class, event.link_method),
+                    )
 
                 camera_row = session.get(CameraRegistry, camera_id)
                 raise_anomaly_alerts(session, camera_row, event, identity)

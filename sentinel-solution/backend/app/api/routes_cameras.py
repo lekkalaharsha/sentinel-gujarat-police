@@ -443,12 +443,22 @@ def get_camera(camera_id: str, db: Session = Depends(get_db), principal: Princip
 
 
 @router.get("/{camera_id}/last-detection")
-def last_detection(camera_id: str, db: Session = Depends(get_db), _principal: Principal = Depends(require_role("viewer"))):
+def last_detection(
+    camera_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("viewer")),
+):
     """Most recent real detection at this camera. Not a live video overlay —
     the pipeline processes sampled frames server-side, it doesn't composite
     boxes back onto the HLS stream — but it IS the real bbox/plate/attributes
     from the latest processed frame, meant to be polled and shown alongside
     the live player as a periodically-refreshed "last seen" panel."""
+    registry = db.get(CameraRegistry, camera_id)
+    dept = department_scope(principal)
+    if dept is not None and (registry is None or registry.department != dept):
+        # Keep the same non-enumerating response as get_camera().
+        raise HTTPException(status_code=404, detail=f"camera {camera_id} not found")
+
     event = (
         db.query(VehicleEvent)
         .filter(VehicleEvent.camera_id == camera_id)
