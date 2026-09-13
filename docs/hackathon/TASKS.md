@@ -1,12 +1,97 @@
 # Sentinel — Next Actions
 
 Living task list. Deadline **15 September 2026** (Phase 1, updated
-2026-09-05 — was 7 Sep), event 22–23 Sep (was 10–11 Sep).
-Last updated **2026-09-05** (reconciled against actual code — several
-entries below were stale/already fixed and have been corrected).
+2026-09-05 — was 7 Sep), event 22–23 Sep (was 10–11 Sep). **2 days left
+as of 2026-09-13.**
+Last updated **2026-09-13** (see new section below — reconciled against
+actual code and real sandbox verification; several entries below were
+stale/already fixed and have been corrected).
 Cross-check against `REQUIREMENTS_COVERAGE.md` (the authoritative
 deliverable-status matrix) and `sentinel-solution/README.md` ("Known
 issues") before trusting this file if it's more than a day or two old.
+
+## 2026-09-13 — independent-review fixes + real live-sandbox verification (done)
+
+**Highest-priority remaining item is unchanged and still not started: the
+own-feed demo video (2-3 min, §9.3) and the Model 2 "≥2 different systems"
+proof/clarification.** Everything below is supporting work, not a
+substitute for those two.
+
+Fixed, tested, and committed (4 commits, `feature/statewide-operations-nav`):
+
+- **Evidence-tier alert bypass (BLOCKER, found by independent review)** —
+  `pipeline.py` was gating watchlist alerts on `identity.plate` instead of
+  the triggering event's OWN `plate`/`link_method`, so a LEAD_ONLY
+  appearance-match sighting could raise an ordinary plate-matched alert if
+  the same identity had been plate-confirmed by an earlier, different
+  sighting. Now gates on `evidence_class.classify(event.plate,
+  event.link_method) == CONFIRMED`; `Alert` persists `evidence_class`/
+  `evidence_class_reason`. Idempotent backfill script run against the live
+  `sentinel.db`; 2 pre-existing bad alerts correctly relabeled without
+  rewriting investigator history (evidence-append-only).
+- **Object-level RBAC gaps (found by independent review)** — camera
+  stream (HLS playlist/segment), last-detection, vehicle-crop, and alert
+  list/status/ack endpoints now enforce `department_scope()`: hard-block
+  for viewer role outside the owning department, audit-and-allow for
+  investigator role (preserves the intentional cross-department
+  vehicle-search capability, logged to `AuditLog`).
+- **Self-caught regression**: while verifying the RBAC fix, found the
+  vehicle-crop endpoint had briefly gated VIEWING (not just export) on
+  `evidence_class.is_exportable()` — would have 404'd 99.95% of real saved
+  crops (12,274/12,280 are non-CONFIRMED). Fixed; 5 regression tests lock
+  this in.
+- **RTSP reconnect not resetting tracker state** — `rtsp_client.py`
+  cleared `last_pts_ms` to `None` on reconnect, which silently made the
+  first frame of the new connection report `discontinuity=False`, so
+  `pipeline.py` never reset per-camera tracker/ByteTrack state across a
+  reconnect gap. Fixed with an explicit `just_reconnected` flag.
+- **ONVIF SSRF hardening** — `device.xaddr` (unauthenticated UDP
+  multicast reply) and `media_xaddr` (the device's own, equally untrusted
+  `GetCapabilities` response) were used directly in `requests.post()` with
+  redirects enabled — a hostile/compromised device could redirect the
+  backend to an internal URL. Added `_validate_onvif_address()` (rejects
+  non-http(s) schemes, unresolvable hosts, loopback/link-local/multicast
+  targets — covers cloud-metadata SSRF) and `allow_redirects=False`.
+- **Camera health masking analytics failures (live-reproduced this
+  session, see below)** — `CameraRegistry.is_healthy`/`/health` only ever
+  reflected RTSP stream connectivity. Added `analytics_degraded`/
+  `last_analytics_success_at` tracked at the point `pipeline.process()`
+  is actually invoked (stride-gated), separate from stream connectivity,
+  exposed on `GET /cameras` and `/health`.
+- **Real live-sandbox verification, using the real 30-camera sandbox and
+  real organizer credentials**: found and fixed a real torch/torchvision
+  ABI mismatch (`torch==2.12.1` + `torchvision==0.20.1`) that made every
+  analytics call fail while `/health` reported all 30 workers "ok" — the
+  exact failure mode the analytics-degraded fix above now catches.
+  Fixed via `pip install --upgrade torchvision` (resolved to
+  `torch==2.14.0`/`torchvision==0.29.0`); re-verified real, fresh
+  detection events land in `sentinel.db` against the live sandbox
+  (e.g. `cam11`, 2026-09-13, `car`, confidence 0.72). Plate is still
+  `None` — `paddleocr`/`paddlepaddle` are not installed in this
+  environment, `StubPlateReader` honestly active.
+- **New, documented, NOT-yet-fixed risk**: loading the plate-detector
+  `.onnx` weights still triggers ultralytics' AutoUpdate on this
+  environment, silently upgrading `onnx`/`protobuf` past the versions
+  `requirements-ml.txt` pins for exactly this reason (breaks
+  `paddlepaddle==2.6.2` if installed in the same venv). Attempting to
+  re-pin `onnx==1.14.1` failed outright on this environment's Python 3.12
+  (no prebuilt wheel, needs `cmake` to build from source) — left
+  documented in `requirements-ml.txt` rather than forced under deadline
+  pressure. **Before ever installing paddleocr/paddlepaddle in this same
+  venv**, recreate it on Python ≤3.11 or resolve this properly.
+- Rebuilt the presentation deck (`build_deck_v3.py`) around the corrected
+  accountability-layer positioning with real measured evidence-tier
+  counts, replacing the forbidden "ANPR failure ≠ tracking failure"
+  headline.
+
+156/156 backend tests passing after all fixes (was 131 at session start).
+
+**Still open, not touched this session:** the demo video, Model 2's
+two-system proof, PDF regeneration from the new deck, `HLD.md`/
+`REQUIREMENTS_COVERAGE.md` doc sync against these fixes, sandbox
+credential rotation (a real credential was pasted into a chat session
+this week and should be treated as exposed), camera ANPR-suitability
+scoring, §63 evidence hash-at-write, integration-loss dashboard.
 
 ## Paused work — resume later
 
@@ -323,11 +408,8 @@ confirmed status + a concrete described fix for each).
       `tracker.py` integration), not a small change — not attempted.
       (`analytics/tracker.py`)
 
-- [ ] **RTSP discontinuity detection doesn't survive a reconnect** —
-      `last_pts_ms` resets to `None` on every reconnect, so a scene-loop
-      point that triggers a full reconnect (vs. a smooth PTS-backward
-      moment inside one connection) goes undetected and tracker/identity
-      state isn't reset. (`streaming/rtsp_client.py`)
+~~RTSP discontinuity detection doesn't survive a reconnect~~ — **fixed
+2026-09-13**, see the new section above. (`streaming/rtsp_client.py`)
 - [ ] **No FFmpeg read-timeout on `cap.read()`** — a stalled TCP session
       can block forever instead of returning `ok=False`, defeating the
       otherwise-correct backoff/reconnect logic. (`streaming/rtsp_client.py`)
@@ -526,10 +608,13 @@ build` clean, and every new endpoint exercised over real HTTP against a running
 | Real ANPR output | **PASS (historic)** — `data/anpr_scan/20260905T112430Z`, 7 reads |
 | GIS mapping | **PARTIAL** — 22 of 30 cameras have coordinates; the sandbox
   catalogue supplies none, they come from our registry |
-| RTSP analytics producing new events | **PARTIAL** — venv rebuilt to Python
-  3.11 (was 3.12, which had no `cp312` wheel for the pinned `onnx==1.14.1`
-  and would have needed a `cmake` source build). ML deps installing;
-  real-model verification proceeding on a second machine |
+| RTSP analytics producing new events | **PASS (updated 2026-09-13)** —
+  live-verified on this machine's Python 3.12 venv against the real
+  sandbox: a torch/torchvision ABI mismatch was found and fixed
+  (`pip install --upgrade torchvision`), real fresh detection events
+  now land in `sentinel.db` (e.g. `cam11`, confidence 0.72). Plate reads
+  still absent — `paddleocr`/`paddlepaddle` not installed here, honest
+  `StubPlateReader` fallback active. |
 | Full government-feed demo session | **RETRACTED "externally blocked"
   status — see below** |
 
