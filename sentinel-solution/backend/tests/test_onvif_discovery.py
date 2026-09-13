@@ -261,3 +261,73 @@ def test_catalogue_onvif_discovery_failure_falls_back_not_raises(monkeypatch):
     with patch("app.streaming.onvif_discovery.discover", side_effect=RuntimeError("boom")):
         result = client._try_onvif_discovery()
     assert result == {}
+
+
+# --- SSRF hardening (found 2026-09-13) ---------------------------------
+#
+# device.xaddr comes from an unauthenticated UDP multicast ProbeMatch reply,
+# and media_xaddr (used for the follow-up GetProfiles/GetStreamUri calls)
+# comes from that same untrusted device's own GetCapabilities SOAP
+# response. A hostile/compromised "camera" could hand back a URL pointing
+# at an internal service (e.g. a cloud metadata endpoint) instead of
+# itself — _validate_onvif_address() is the choke point _soap_call() must
+# run before ever making the HTTP request.
+
+
+@pytest.mark.parametrize(
+    "xaddr",
+    [
+        "http://169.254.169.254/latest/meta-data/",  # cloud metadata (link-local)
+        "http://127.0.0.1:9999/admin",                # loopback
+        "http://[::1]:9999/admin",                    # loopback, IPv6
+        "ftp://192.168.1.50/onvif/device_service",    # disallowed scheme
+        "not-a-url",                                  # no host at all
+    ],
+)
+def test_validate_onvif_address_rejects_ssrf_targets(xaddr):
+    with pytest.raises(od.UntrustedOnvifAddressError):
+        od._validate_onvif_address(xaddr)
+
+
+def test_validate_onvif_address_accepts_private_lan_ip():
+    od._validate_onvif_address("http://192.168.1.50/onvif/device_service")  # must not raise
+
+
+@patch("app.streaming.onvif_discovery.requests.post")
+def test_soap_call_rejects_untrusted_xaddr_without_making_a_request(mock_post):
+    with pytest.raises(od.UntrustedOnvifAddressError):
+        od._soap_call("http://169.254.169.254/", "<body/>", None, None)
+    mock_post.assert_not_called()
+
+
+@patch("app.streaming.onvif_discovery.requests.post")
+def test_soap_call_disables_redirects(mock_post):
+    mock_post.return_value = MagicMock(content=GET_CAPABILITIES_XML)
+    od._soap_call("http://192.168.1.50/onvif/device_service", "<body/>", None, None)
+    assert mock_post.call_args.kwargs["allow_redirects"] is False
+
+
+@patch("app.streaming.onvif_discovery.requests.post")
+def test_fetch_stream_urls_rejects_malicious_media_xaddr_from_device_response(mock_post):
+    """The device's OWN GetCapabilities response can point media_xaddr
+    anywhere — a malicious device redirecting Sentinel to probe its
+    internal network must be rejected, not silently followed."""
+    malicious_capabilities = b"""<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"
+            xmlns:tt="http://www.onvif.org/ver10/schema">
+  <s:Body>
+    <GetCapabilitiesResponse>
+      <Capabilities>
+        <tt:Media><tt:XAddr>http://169.254.169.254/latest/meta-data/</tt:XAddr></tt:Media>
+      </Capabilities>
+    </GetCapabilitiesResponse>
+  </s:Body>
+</s:Envelope>"""
+    mock_post.return_value = MagicMock(content=malicious_capabilities)
+    device = od.OnvifDevice(xaddr="http://192.168.1.50/onvif/device_service")
+
+    with pytest.raises(od.UntrustedOnvifAddressError):
+        od.fetch_stream_urls(device, None, None)
+
+    # Only the (trusted) initial GetCapabilities call should have gone out.
+    assert mock_post.call_count == 1

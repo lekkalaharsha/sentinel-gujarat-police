@@ -18,6 +18,7 @@ from __future__ import annotations
 import base64
 import datetime as dt
 import hashlib
+import ipaddress
 import logging
 import os
 import socket
@@ -25,6 +26,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 import requests
 # ProbeMatch/SOAP responses come from untrusted network devices — use
@@ -167,9 +169,45 @@ def _soap_envelope(body: str, security_header: str = "") -> str:
     )
 
 
+class UntrustedOnvifAddressError(ValueError):
+    """Raised when a device/SOAP-response-supplied address fails SSRF validation."""
+
+
+def _validate_onvif_address(xaddr: str) -> None:
+    """`xaddr` values originate from untrusted network input: WS-Discovery
+    ProbeMatch replies are unauthenticated UDP multicast, and the "Media"
+    XAddr used for follow-up calls comes from the device's own
+    GetCapabilities SOAP response. A hostile or compromised device could
+    hand back a URL pointing anywhere reachable from this backend (internal
+    admin panels, cloud metadata endpoints, etc.) — this is the classic
+    SSRF-via-service-discovery shape, so validate before any request.Post()
+    ever touches the value. ONVIF discovery is inherently LAN-scoped, so
+    only http(s) to a private/link-local-excluded IPv4/IPv6 literal or
+    resolvable hostname is accepted; loopback and link-local (which covers
+    the 169.254.169.254 cloud-metadata address) are explicitly rejected.
+    """
+    parsed = urlparse(xaddr)
+    if parsed.scheme not in ("http", "https"):
+        raise UntrustedOnvifAddressError(f"rejected ONVIF address with scheme {parsed.scheme!r}: {xaddr!r}")
+    host = parsed.hostname
+    if not host:
+        raise UntrustedOnvifAddressError(f"rejected ONVIF address with no host: {xaddr!r}")
+    try:
+        addrs = {info[4][0] for info in socket.getaddrinfo(host, None)}
+    except socket.gaierror as exc:
+        raise UntrustedOnvifAddressError(f"could not resolve ONVIF address host {host!r}: {exc}") from exc
+    for addr in addrs:
+        ip = ipaddress.ip_address(addr)
+        if ip.is_loopback or ip.is_link_local or ip.is_unspecified or ip.is_multicast:
+            raise UntrustedOnvifAddressError(
+                f"rejected ONVIF address {xaddr!r}: host {host!r} resolves to disallowed address {addr}"
+            )
+
+
 def _soap_call(
     xaddr: str, body: str, username: Optional[str], password: Optional[str], timeout_s: float = 5.0
 ) -> Element:
+    _validate_onvif_address(xaddr)
     header = _ws_security_header(username, password) if username and password else ""
     envelope = _soap_envelope(body, header)
     resp = requests.post(
@@ -177,6 +215,9 @@ def _soap_call(
         data=envelope.encode("utf-8"),
         headers={"Content-Type": "application/soap+xml; charset=utf-8"},
         timeout=timeout_s,
+        # A malicious/compromised device must not be able to redirect this
+        # backend to an arbitrary internal URL via a 30x SOAP response.
+        allow_redirects=False,
     )
     resp.raise_for_status()
     return _safe_fromstring(resp.content)
