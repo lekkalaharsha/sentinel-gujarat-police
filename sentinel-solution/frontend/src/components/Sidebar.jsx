@@ -40,6 +40,14 @@ const NAV = [
     { id: "systems", label: "Connected Systems", icon: IconLayers },
     { id: "federation", label: "Integration Monitor", icon: IconGraph },
   ]},
+  { group: "Statewide Operations", items: [
+    { id: "statewide", label: "Statewide Overview", icon: IconMap },
+    { id: "statewide-central", label: "Central Monitoring", icon: IconCamera },
+    { id: "statewide-infra", label: "Infrastructure & Scale", icon: IconLayers },
+    { id: "statewide-storage", label: "Storage & Retention", icon: IconReport },
+    { id: "statewide-dr", label: "Resilience & DR", icon: IconShield },
+    { id: "statewide-readiness", label: "Statewide Readiness", icon: IconGraph },
+  ]},
   { group: "System", items: [
     { id: "audit", label: "Audit & Governance", icon: IconShield },
     { id: "users", label: "User Administration", icon: IconFolder },

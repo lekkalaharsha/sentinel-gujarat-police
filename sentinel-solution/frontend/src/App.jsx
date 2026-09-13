@@ -25,6 +25,12 @@ import ConnectedSystemsView from "./components/ConnectedSystemsView";
 import MonitoringView from "./components/MonitoringView";
 import UserAdminView from "./components/UserAdminView";
 import NotImplemented from "./components/NotImplemented";
+import StatewideOverview from "./components/StatewideOverview";
+import CentralMonitoringView from "./components/CentralMonitoringView";
+import InfrastructureScaleView from "./components/InfrastructureScaleView";
+import StorageRetentionView from "./components/StorageRetentionView";
+import ResilienceDRView from "./components/ResilienceDRView";
+import StatewideReadinessView from "./components/StatewideReadinessView";
 import "./App.css";
 
 const CAMERA_POLL_MS = 15000;
@@ -163,6 +169,12 @@ export default function App() {
             {view === "runtime" && <SystemHealthView health={health} gapAnalysis={gapAnalysis} />}
             {view === "architecture" && <ArchitectureView />}
             {view === "settings" && <SettingsView />}
+            {view === "statewide" && <StatewideOverview cameras={cameras} health={health} alerts={alerts} onNavigate={setView} />}
+            {view === "statewide-central" && <CentralMonitoringView cameras={cameras} health={health} />}
+            {view === "statewide-infra" && <InfrastructureScaleView />}
+            {view === "statewide-storage" && <StorageRetentionView />}
+            {view === "statewide-dr" && <ResilienceDRView />}
+            {view === "statewide-readiness" && <StatewideReadinessView />}
             {view === "cases" && (
               <NotImplemented
                 title="Investigation Cases"
