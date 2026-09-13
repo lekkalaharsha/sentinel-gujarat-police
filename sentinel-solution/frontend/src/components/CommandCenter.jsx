@@ -5,6 +5,31 @@ import { IconCamera, IconCar, IconAlert, IconVehicleSide } from "../icons";
 
 const POLL_MS = 8000;
 
+function DetectionThumbnail({ eventId, hasImage, watchlisted }) {
+  const [url, setUrl] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    let blobUrl = null;
+    if (!hasImage || !eventId) return undefined;
+
+    api.eventCropBlobUrl(eventId).then(
+      (nextUrl) => {
+        if (!active) { URL.revokeObjectURL(nextUrl); return; }
+        blobUrl = nextUrl;
+        setUrl(nextUrl);
+      },
+      () => { if (active) setUrl(null); }
+    );
+    return () => {
+      active = false;
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+  }, [eventId, hasImage]);
+
+  return <div className={`vehicle-thumb2 ${watchlisted ? "watch2" : ""}`}>{url ? <img src={url} alt="Evidence crop" /> : <IconVehicleSide />}</div>;
+}
+
 // Deliberately real-numbers-only: no fabricated "GPU load" / "storage %"
 // gauges here — we have no telemetry source for those. Every KPI below
 // comes straight from a real endpoint.
@@ -80,7 +105,7 @@ export default function CommandCenter({ cameras, health, gapAnalysis, alerts, ro
             {!recent.length && !recentError && <p style={{ color: "var(--text-dim)", fontSize: 11 }}>No detections yet — the pipeline logs a sighting once a real vehicle is processed on a live camera.</p>}
             {recent.map((r) => (
               <div className="detectrow2" key={r.event_id}>
-                <div className={`vehicle-thumb2 ${r.watchlisted ? "watch2" : ""}`}><IconVehicleSide /></div>
+                <DetectionThumbnail key={`${r.event_id}-${r.has_evidence_image}`} eventId={r.event_id} hasImage={r.has_evidence_image} watchlisted={r.watchlisted} />
                 <div className="info2">
                   <div className="plate2">{r.plate || `${r.color || "?"} ${r.vehicle_type || "vehicle"}`}</div>
                   <div className="meta2">{new Date(r.observed_at).toLocaleTimeString()} · {r.camera_id}{r.location ? ` · ${r.location}` : ""}</div>
