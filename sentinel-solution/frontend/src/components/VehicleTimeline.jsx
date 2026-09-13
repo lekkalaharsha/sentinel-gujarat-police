@@ -9,15 +9,34 @@
 // the row it labels. `exportable_as_evidence` is likewise the backend's
 // decision; this component only renders it.
 const TIER = {
-  CONFIRMED: { label: "CONFIRMED", color: "var(--confirmed)", bg: "var(--confirmed-bg)" },
-  PROBABLE: { label: "PROBABLE", color: "var(--warn)", bg: "var(--warn-bg)" },
-  LEAD_ONLY: { label: "LEAD ONLY", color: "var(--danger)", bg: "var(--danger-bg)" },
+  CONFIRMED: {
+    label: "CONFIRMED",
+    color: "var(--confirmed)",
+    bg: "var(--confirmed-bg)",
+    title: "Directly evidenced sighting (e.g. plate-confirmed).",
+  },
+  PROBABLE: {
+    label: "PROBABLE",
+    color: "var(--warn)",
+    bg: "var(--warn-bg)",
+    title: "Multiple supporting signals, but still requires investigator verification.",
+  },
+  LEAD_ONLY: {
+    label: "LEAD ONLY",
+    color: "var(--danger)",
+    bg: "var(--danger-bg)",
+    title: "Investigative Lead Only — Low Visual Confidence. Appearance-based match, not a confirmed sighting.",
+  },
 };
 
 function TierBadge({ cls }) {
   const t = TIER[cls] || TIER.LEAD_ONLY;
   return (
-    <span className="state-badge" style={{ color: t.color, background: t.bg, fontWeight: 700 }}>
+    <span
+      className="state-badge"
+      style={{ color: t.color, background: t.bg, fontWeight: 700 }}
+      title={t.title}
+    >
       {t.label}
     </span>
   );
@@ -52,6 +71,11 @@ export default function VehicleTimeline({ sightings, routeSegments, selectedInde
                 </div>
                 <div className="timeline__row timeline__row--sub">
                   <TierBadge cls={s.evidence_class} />
+                  {(s.evidence_class == null || s.evidence_class === "LEAD_ONLY") && (
+                    <span style={{ fontSize: 10.5, color: "var(--danger)", fontWeight: 600 }}>
+                      Investigative Lead Only — Low Visual Confidence
+                    </span>
+                  )}
                   <span style={{ fontSize: 10.5, color: "var(--text-dim)" }}>{s.link?.method}</span>
                 </div>
                 <div className="timeline__row timeline__row--sub">

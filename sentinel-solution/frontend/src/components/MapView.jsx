@@ -128,7 +128,9 @@ export default function MapView({ cameras, route, onSelectCamera, selectedCamera
               <br />
               {new Date(s.observed_at).toLocaleString()}
               <br />
-              {isLeadOnly ? "INFERRED / LEAD ONLY" : `${s.evidence_class} / OBSERVED`}
+              {isLeadOnly
+                ? "Investigative Lead Only — Low Visual Confidence"
+                : `${s.evidence_class} / OBSERVED`}
             </Popup>
           </CircleMarker>
           );
