@@ -93,6 +93,51 @@ credential rotation (a real credential was pasted into a chat session
 this week and should be treated as exposed), camera ANPR-suitability
 scoring, §63 evidence hash-at-write, integration-loss dashboard.
 
+## 2026-09-13 (continued) — Model 4 pilot slice + second Codex batch, tagged v0.3.0 (done)
+
+Two further Codex batches, each reviewed and partly corrected before commit
+(see commit messages on `feature/statewide-operations-nav` for full detail):
+
+- **Model 4 pilot slice**: real sampled-frame density aggregation
+  (`CameraDensityWindow`, `GET /admin/density`), storage-tier metadata
+  (`VehicleEvent.storage_tier`, hot/warm/cold), a central pilot rollup
+  (`GET /admin/central-rollup`), and an explicit `DeliberatelyExcludedFaceRecognizer`
+  seam. Deliberately scoped — no Kafka/Kubernetes/Triton/TimescaleDB/S3/
+  government-DB integration. **Caught before commit**: Codex's own
+  handoff-report text had been accidentally pasted into the organizer-facing
+  `docs/promast/...Technical_Proposal.md` — reverted.
+- **RTSP read timeout** (`config.RTSP_READ_TIMEOUT_US`, default 5s) — a
+  stalled TCP peer could previously block `cap.read()` forever, defeating
+  the backoff/reconnect logic entirely.
+- **Atomic identity+event commits**: `identity.py` now flushes instead of
+  committing, so `pipeline.py`'s single commit covers both the identity
+  mutation and its `VehicleEvent` insert — previously a crash between them
+  could leave an orphaned identity mutation with no corresponding event.
+- **Camera ANPR-suitability scoring** (CAPABLE/MARGINAL/UNSUITABLE) from
+  real persisted plate-read history only — `analytics/anpr_suitability.py`,
+  surfaced on `GET /cameras`.
+- **Caught before commit**: the duplicate-identity migration's merge logic
+  absorbed missing fields with a generic rule that never actually fired for
+  `first_seen_at`/`last_seen_at` (always non-null via a `utcnow()` default)
+  — fixed to compute the genuinely correct MIN/MAX merge instead of keeping
+  the earliest-created row's possibly-stale timestamp.
+- **Track-contamination guard, SQLite write batching, 3 frontend gaps** —
+  see the updated P2 entries above for the contamination-guard limitation
+  and the FFmpeg-timeout/Safari-HLS/map-styling/alert-polling fixes. SQLite
+  now sets `PRAGMA busy_timeout=5000` + `journal_mode=WAL`, and density
+  writes batch per camera/window instead of committing every frame —
+  independently load-tested here (not just unit-tested): 30 concurrent
+  threads × 50 commits against a real temp SQLite file, 1500/1500 writes
+  succeeded, zero lock errors.
+
+**Tagged `v0.3.0`, PR #2 opened** (`feature/statewide-operations-nav` →
+`master`), not yet merged. 155/155 backend tests passing; frontend
+`npm run lint`/`npm run build` clean.
+
+**Still open:** everything listed as still-open above, unchanged — this was
+supporting hardening work, not a substitute for the demo video / two-system
+proof / credential rotation.
+
 ## Paused work — resume later
 
 - [x] **Per-reference-model module docs (Model 1–4) — drafted 2026-09-11.**
@@ -383,47 +428,50 @@ confirmed status + a concrete described fix for each).
 
 ## P2 — known code issues, not yet fixed (lower demo-visibility risk)
 
-- [ ] **`tracker.py`'s `consensus_plate()` can synthesize a plate string
-      that matches no actual OCR read, if a track's `plate_reads` ever mix
-      two different vehicles' reads (an IOU-overlap association merging a
-      second car into an existing track — e.g. one vehicle leaving a
-      queued spot right as another pulls into the same bbox within
-      `TRACK_TIMEOUT_MS`).** Found and investigated by an independent
-      project review (2026-09-11); locked in as a real, passing regression
-      test
-      (`test_consensus_plate_can_synthesize_a_string_that_matches_no_actual_read`),
-      not left silently unflagged. **Two fix attempts were tried and both
-      reverted, on evidence**: a post-hoc confidence penalty in
-      `consensus_plate()`, and a plate-agreement guard at association time
-      in `CameraTracker.update()` — both broke
-      `test_consensus_plate_isolates_higher_vote_share`/
-      `test_consensus_plate_confidence_is_vote_share_not_count`, which
-      correctly require a severely-disagreeing single stray misread of the
-      SAME vehicle to be outvoted, not treated as contamination; there is
-      no character-agreement threshold that separates that already-
-      required case from genuine two-vehicle contamination. A real fix
-      needs signal outside the plate string itself (e.g. an appearance-
-      embedding distance check between a candidate track's stored crop and
-      a new detection's crop before merging — a genuine `reid.py`-into-
-      `tracker.py` integration), not a small change — not attempted.
+- [x] **`tracker.py`'s `consensus_plate()` can synthesize a plate string
+      that matches no actual OCR read — PARTIALLY MITIGATED 2026-09-13, not
+      fully closed.** Found and investigated by an independent project
+      review (2026-09-11); two earlier fix attempts (a post-hoc confidence
+      penalty, a plate-agreement guard) were reverted on evidence — both
+      broke `test_consensus_plate_isolates_higher_vote_share`/
+      `test_consensus_plate_confidence_is_vote_share_not_count`. The
+      documented real fix (an appearance-embedding distance check between a
+      candidate track's stored crop and a new detection's crop before
+      merging, via `reid.py`) was implemented 2026-09-13:
+      `CameraTracker._appearance_compatible()` rejects an IOU-fallback merge
+      when `ColorHistogramEncoder` similarity is below 0.80 (identity.py's
+      existing threshold). **Known limitation, documented in code**: that
+      same encoder was independently measured
+      (`scripts/calibrate_embedding_threshold.py`, 2026-09-10) at a 41.87%
+      false-positive rate on real confirmed-different vehicle pairs, so this
+      guard reliably catches only grossly dissimilar vehicles (its own test
+      uses solid black vs. white crops) and will likely still miss the
+      realistic same-color-class contamination case. A real fix needs a
+      stronger encoder, not a threshold change on this one — not attempted.
       (`analytics/tracker.py`)
 
 ~~RTSP discontinuity detection doesn't survive a reconnect~~ — **fixed
 2026-09-13**, see the new section above. (`streaming/rtsp_client.py`)
-- [ ] **No FFmpeg read-timeout on `cap.read()`** — a stalled TCP session
-      can block forever instead of returning `ok=False`, defeating the
-      otherwise-correct backoff/reconnect logic. (`streaming/rtsp_client.py`)
-- [ ] **Frontend: Safari's native-HLS path sends no API key** and fails
-      with no visible error banner (only the hls.js path attaches auth
-      headers). (`frontend/src/components/LiveView.jsx`)
-- [ ] **Frontend: map view doesn't distinguish OBSERVED vs. INFERRED route
-      segments** — draws one uniform line regardless of link confidence,
-      unlike the Vehicle Tracking timeline panel which does this correctly.
-      (`frontend/src/components/MapView.jsx`, `App.jsx`)
-- [ ] **Frontend: alert-list polling can race a user's transition click** —
-      briefly reverts a just-acknowledged alert, second click then hits a
-      confusing raw `409 illegal transition` error.
-      (`frontend/src/components/AlertsPanel.jsx`)
+~~No FFmpeg read-timeout on `cap.read()`~~ — **fixed 2026-09-13**:
+`config.RTSP_READ_TIMEOUT_US` (default 5s) via `OPENCV_FFMPEG_CAPTURE_OPTIONS`'s
+`stimeout`. (`streaming/rtsp_client.py`)
+~~Frontend: Safari's native-HLS path sends no API key~~ — **fixed
+2026-09-13**: shows an explicit "requires Chrome/Firefox/Edge" message
+instead of a silently blank player (a real fix — signed-URL/cookie auth for
+Safari's native path — is out of scope, this makes the failure honest
+instead of silent). (`frontend/src/components/LiveView.jsx`)
+~~Frontend: map view doesn't distinguish OBSERVED vs. INFERRED route
+segments~~ — **fixed 2026-09-13**: route segments and stop markers now use
+the same evidence-tier styling as the Vehicle Tracking timeline panel
+(solid green/amber for CONFIRMED/PROBABLE, dashed red for LEAD_ONLY); a
+missing `evidence_class` fails conservative to LEAD_ONLY/INFERRED rather
+than defaulting to an "OBSERVED" label. (`frontend/src/components/MapView.jsx`)
+~~Frontend: alert-list polling can race a user's transition click~~ —
+**fixed 2026-09-13**: pending transitions are tracked locally and a
+concurrent poll response for that alert is ignored until the transition
+resolves; action buttons disable while pending; a 409 (already-transitioned)
+response shows a plain refresh message instead of raw backend error text.
+(`frontend/src/components/AlertsPanel.jsx`)
 
 ~~VehicleIdentity history lookup uses `.first()` on a non-unique query
 pattern~~ — **not actually a bug**, re-verified 2026-09-05: `vehicle_identity
