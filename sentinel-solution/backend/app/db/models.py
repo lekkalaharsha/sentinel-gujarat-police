@@ -143,6 +143,10 @@ class VehicleEvent(Base):
     # immediately after resolution) but the column already exists for when
     # they don't. Matches FederatedEvent's observed_at/ingested_at split.
     ingested_at = Column(DateTime, default=dt.datetime.utcnow)
+    # Pilot metadata only. The API recomputes the current tier from age so a
+    # row cannot remain "hot" forever; this stored initial value preserves
+    # what was assigned when the event entered Sentinel.
+    storage_tier = Column(String, nullable=True, default="hot")
     confidence = Column(Float, nullable=True)  # detector confidence
 
     vehicle_type = Column(String, nullable=True)  # car / truck / bus / motorcycle
@@ -192,6 +196,26 @@ class VehicleEvent(Base):
 
     camera = relationship("CameraRegistry")
     identity = relationship("VehicleIdentity")
+
+
+class CameraDensityWindow(Base):
+    """Real sampled-frame object counts for one camera/time bucket.
+
+    Counts are detector outputs, not unique people/vehicles or a crowd-size
+    estimate.  That distinction is deliberate: no crowd-density threshold or
+    biometric identification is inferred by this pilot capability.
+    """
+
+    __tablename__ = "camera_density_window"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    camera_id = Column(String, ForeignKey("camera_registry.id"), nullable=False, index=True)
+    window_started_at = Column(DateTime, nullable=False, index=True)
+    window_seconds = Column(Integer, nullable=False)
+    sampled_frames = Column(Integer, nullable=False, default=0)
+    vehicle_detections = Column(Integer, nullable=False, default=0)
+    person_detections = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, default=dt.datetime.utcnow, nullable=False)
 
 
 class WatchlistEntry(Base):

@@ -1,5 +1,17 @@
 # Model 4 — Central VMS Model — Architecture
 
+## Scoped pilot capability slice (2026-09-13)
+
+`GET /admin/density` persists sampled-frame vehicle/person detector counts;
+these are raw detector outputs, not crowd-size estimates. `GET /admin/central-rollup`
+combines actual pilot registry, health, alert and federation data for admins.
+Event hot/warm/cold classification is metadata only and does not move data to
+S3/Ceph. `DR_RUNBOOK.md` documents an isolated SQLite backup/restore drill.
+
+These are pilot features, not statewide infrastructure. Kafka, Kubernetes,
+Triton, TimescaleDB, S3/Ceph, FRS and live government-database integration
+remain explicit roadmap/excluded items.
+
 **Design/roadmap only — not built, not planned to be built this
 hackathon.** Per `docs/strategy/STRATEGY.md`'s OUT list, a full
 80,000-camera central platform is explicitly out of the time budget. This

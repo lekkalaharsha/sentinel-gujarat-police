@@ -650,6 +650,21 @@ moment, which depends on the ML runtime (being verified on a second
 machine, see above) rather than on any organizer dependency.
 
 
+## 2026-09-13 — scoped Model 4 pilot slice
+
+- [x] **AUTOMATED-TEST VERIFIED:** `CameraDensityWindow` aggregates actual
+      sampled-frame vehicle/person detector outputs. `GET /admin/density`
+      labels them as raw detections, not unique people/vehicles or crowd size.
+- [x] **IMPLEMENTED, UNVERIFIED:** `VehicleEvent.storage_tier` and dynamic
+      hot/warm/cold classification expose metadata only; no object storage is deployed.
+- [x] **AUTOMATED-TEST VERIFIED:** `GET /admin/central-rollup` combines real
+      pilot registry, health, alert and federation data for admins.
+- [x] **IMPLEMENTED, UNVERIFIED:** `DR_RUNBOOK.md` defines a SQLite
+      backup/restore procedure. Multi-region DR remains a DESIGN TARGET.
+- [x] `DeliberatelyExcludedFaceRecognizer` is an honest Protocol seam that
+      raises rather than fabricating FRS results. FRS and government-database
+      integrations remain deliberately excluded/external-access dependent.
+
 ## Deliberately not doing (see STRATEGY.md's OUT list — don't silently build these)
 
 Face recognition, fingerprint/biometric integration, full 80k-camera

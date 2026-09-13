@@ -58,6 +58,9 @@ Model 1/2 fully closed out. See
 | Official deliverable | Status | Where |
 |---|---|---|
 | Adapter/plugin architecture for multiple vendors | ✅ Done | `VMSAdapter` Protocol + `NormalizedEvent` dataclass (`analytics/federation.py`); two real adapters, `SentinelAdapter` and `NycOpenDataAdapter` |
+| Model 4 pilot density aggregation | AUTOMATED-TEST VERIFIED | `CameraDensityWindow` persists actual sampled-frame detector counts; `GET /admin/density` labels them as non-unique raw detections, not crowd-size estimates |
+| Model 4 storage-tier metadata | IMPLEMENTED, UNVERIFIED | `VehicleEvent.storage_tier` plus age-based API classification; no object storage backend is deployed |
+| Model 4 central pilot rollup | AUTOMATED-TEST VERIFIED | `GET /admin/central-rollup` combines actual registry, health, alert and federation data; it explicitly is not a statewide deployment |
 | Metadata exchange bus | ✅ Done, deliberately scoped down | Polled `FederatedEvent` table, not Kafka/RabbitMQ — pilot-scale decision, see `RESEARCH.md` |
 | Event-correlation engine | ✅ Done — **now verified end-to-end on the live DB, not just in unit tests** | `GET /federation/correlations` — cross-source plate correlation within a configurable time window, reusing Model 2's `link_score` explainability vocabulary. **2026-09-11:** added System C (`demo_partner_vms`), a clearly-labelled synthetic source replaying partner sightings of plates Sentinel really read, because Systems A and B share no plates by construction and the join path could otherwise never run against real data. Live run: 1,105 events / 3 sources / **4 correlations** (gaps 47/128/212/284 s), one deliberate +900 s row correctly rejected by the window gate. Every such correlation carries `involves_synthetic_source: true` and prints `SYNTHETIC` in the PDF's Basis column |
 | Unified event-correlation dashboard | ✅ Done | `FederationDashboard.jsx` |

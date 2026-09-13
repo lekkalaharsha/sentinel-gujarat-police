@@ -42,6 +42,7 @@ from . import evidence_class as evclass
 from .anpr import PlateReader
 from .attributes import MakeModelClassifier, StubMakeModelClassifier, extract_attributes
 from .detector import VehicleDetector
+from .density import record_detection_counts, storage_tier_for
 from .identity import identity_resolver
 from .plate_detector import PlateDetector, StubPlateDetector, crop_plate, enhance_plate_crop
 from .reid import EMBEDDING_DIM, ColorHistogramEncoder, ReIdEncoder
@@ -102,6 +103,18 @@ class AnalyticsPipeline:
             self._detectors[frame.camera_id] = self._detector_factory()
         detector = self._detectors[frame.camera_id]
         detections = detector.detect(frame.image)
+        # Persist actual detector outputs per sampled-frame time bucket. This
+        # intentionally counts detections, not unique tracked identities.
+        density_session = SessionLocal()
+        try:
+            self._ensure_camera_registered(density_session, frame.camera_id)
+            record_detection_counts(density_session, frame.camera_id, self._clock(), detections)
+            density_session.commit()
+        except Exception:
+            density_session.rollback()
+            logger.exception("camera %s: density aggregation failed", frame.camera_id)
+        finally:
+            density_session.close()
         vehicle_detections = [d for d in detections if d.label != "person"]
 
         for det in vehicle_detections:
@@ -181,6 +194,7 @@ class AnalyticsPipeline:
                     plate_confidence=plate_confidence,
                     embedding=embedding,
                     observed_at=observed_at,
+                    storage_tier=storage_tier_for(observed_at),
                     camera_id=camera_id,
                 )
 

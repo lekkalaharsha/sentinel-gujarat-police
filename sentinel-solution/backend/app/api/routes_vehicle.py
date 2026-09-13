@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from .. import config
 from ..analytics.anpr import normalize_plate
 from ..analytics import evidence_class as ec
+from ..analytics.density import storage_tier_for
 from ..analytics.geo import RoutePoint, build_inferred_segments, rank_candidate_cameras
 from ..db.models import AuditLog, CameraRegistry, VehicleEvent, VehicleIdentity
 from ..watchlist.service import watchlist_service
@@ -85,6 +86,7 @@ def recent_detections(
             "watchlisted": bool(e.plate and watchlist_service.check(e.plate)),
             "evidence_class": _cls(e),
             "exportable_as_evidence": ec.is_exportable(_cls(e)),
+            "storage_tier": storage_tier_for(e.observed_at),
         })
     return out
 
@@ -207,6 +209,7 @@ def vehicle_history(
                 "evidence_class": _cls(e),
                 "evidence_class_reason": ec.describe(_cls(e), e.link_method),
                 "exportable_as_evidence": ec.is_exportable(_cls(e)),
+                "storage_tier": storage_tier_for(e.observed_at),
                 # Evidence: real detection crop + bbox if the pipeline saved
                 # one (see analytics/pipeline.py); null on older rows or if
                 # the write failed. event_id lets the UI fetch the image.

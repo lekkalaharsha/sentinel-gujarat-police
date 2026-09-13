@@ -101,6 +101,11 @@ PLATE_MIN_CONFIDENCE = float(os.environ.get("SENTINEL_PLATE_MIN_CONFIDENCE", "0.
 # — the accountability trail should outlive the personal data it describes.
 RETENTION_DAYS = int(os.environ.get("SENTINEL_RETENTION_DAYS", "30"))
 AUDIT_RETENTION_DAYS = int(os.environ.get("SENTINEL_AUDIT_RETENTION_DAYS", "365"))
+# Model 4 pilot metadata only: these classify event age for operator views;
+# they do not provision warm/cold storage or override retention enforcement.
+STORAGE_HOT_DAYS = int(os.environ.get("SENTINEL_STORAGE_HOT_DAYS", "15"))
+STORAGE_WARM_DAYS = int(os.environ.get("SENTINEL_STORAGE_WARM_DAYS", "365"))
+ANALYTICS_DENSITY_WINDOW_S = int(os.environ.get("SENTINEL_ANALYTICS_DENSITY_WINDOW_S", "60"))
 # How often the purge job runs, in seconds (default 6h).
 RETENTION_SWEEP_INTERVAL_S = float(os.environ.get("SENTINEL_RETENTION_SWEEP_INTERVAL_S", str(6 * 3600)))
 
