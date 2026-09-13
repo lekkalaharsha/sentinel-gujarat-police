@@ -129,7 +129,6 @@ class IdentityResolver:
             existing.set_embedding(embedding)
             if plate_confidence and (existing.plate_confidence or 0) < plate_confidence:
                 existing.plate_confidence = plate_confidence
-            session.commit()
             return existing, LinkInfo(method="plate_continuation", time_gap_s=gap_s)
 
         # 2. No identity has this plate yet — but an anonymous identity with
@@ -139,13 +138,15 @@ class IdentityResolver:
         candidate, score = self._best_anonymous_match(session, embedding, observed_at, camera_id)
         if candidate is not None:
             gap_s = (observed_at - candidate.last_seen_at).total_seconds()
-            candidate.plate = plate
-            candidate.plate_confidence = plate_confidence
-            candidate.last_seen_at = observed_at
-            candidate.last_camera_id = camera_id
-            candidate.set_embedding(embedding)
             try:
-                session.commit()
+                # Flush (never commit): the pipeline owns the transaction
+                # that includes both this mutation and its VehicleEvent.
+                candidate.plate = plate
+                candidate.plate_confidence = plate_confidence
+                candidate.last_seen_at = observed_at
+                candidate.last_camera_id = camera_id
+                candidate.set_embedding(embedding)
+                session.flush()
             except IntegrityError:
                 # Another camera's worker thread committed an identity with
                 # this exact plate between our SELECT above and this COMMIT
@@ -163,9 +164,9 @@ class IdentityResolver:
             first_seen_at=observed_at, last_seen_at=observed_at, last_camera_id=camera_id,
         )
         identity.set_embedding(embedding)
-        session.add(identity)
         try:
-            session.commit()
+            session.add(identity)
+            session.flush()
         except IntegrityError:
             # Same race as above: another thread's identity for this plate
             # landed first. Re-resolve — this time the plate exists, so we
@@ -188,13 +189,12 @@ class IdentityResolver:
             gap_s = (observed_at - candidate.last_seen_at).total_seconds()
             candidate.last_seen_at = observed_at
             candidate.last_camera_id = camera_id
-            session.commit()
             return candidate, LinkInfo(method="appearance_match", score=score, time_gap_s=gap_s)
 
         identity = VehicleIdentity(first_seen_at=observed_at, last_seen_at=observed_at, last_camera_id=camera_id)
         identity.set_embedding(embedding)
         session.add(identity)
-        session.commit()
+        session.flush()
         return identity, LinkInfo(method="new_identity")
 
     def _best_anonymous_match(

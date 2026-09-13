@@ -38,6 +38,10 @@ SENTINEL_ACCESS_EMAIL = os.environ.get("SENTINEL_ACCESS_EMAIL", "")
 RECONNECT_INITIAL_DELAY_S = float(os.environ.get("RECONNECT_INITIAL_DELAY_S", "2"))
 RECONNECT_MAX_DELAY_S = float(os.environ.get("RECONNECT_MAX_DELAY_S", "30"))
 RECONNECT_BACKOFF_FACTOR = float(os.environ.get("RECONNECT_BACKOFF_FACTOR", "2"))
+# OpenCV's FFmpeg backend otherwise permits a stalled RTSP socket to block
+# VideoCapture.read() indefinitely, preventing the reconnect loop from ever
+# running.  FFmpeg expects this value in microseconds.
+RTSP_READ_TIMEOUT_US = int(os.environ.get("SENTINEL_RTSP_READ_TIMEOUT_US", "5000000"))
 
 # How often to refresh the camera catalogue (ids/availability can change).
 CATALOGUE_REFRESH_INTERVAL_S = float(os.environ.get("CATALOGUE_REFRESH_INTERVAL_S", "60"))

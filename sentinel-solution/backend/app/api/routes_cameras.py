@@ -14,6 +14,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 from sqlalchemy.orm import Session
 
 from .. import config
+from ..analytics.anpr_suitability import anpr_suitability_by_camera
 from ..catalogue import catalogue
 from ..db.models import CameraAuditLog, CameraRegistry, VehicleEvent
 from .auth import Principal, department_scope, require_role
@@ -51,7 +52,9 @@ def _registered_cameras(db: Session, principal: Principal | None = None) -> list
 HEALTH_STALE_S = 90.0
 
 
-def _merged_camera_view(cam_id: str, registry, live_info, include_raw_urls: bool = False) -> dict:
+def _merged_camera_view(
+    cam_id: str, registry, live_info, include_raw_urls: bool = False, anpr_suitability: dict | None = None,
+) -> dict:
     """Model 1's registry is metadata-first (see HACKATHON_DETAILS.md §7):
     a camera can be "registered" (in CameraRegistry, with department/GIS
     metadata) independently of whether it's currently live in the
@@ -106,6 +109,7 @@ def _merged_camera_view(cam_id: str, registry, live_info, include_raw_urls: bool
         "install_date": registry.install_date.isoformat() if registry and registry.install_date else None,
         "coverage_radius_m": registry.coverage_radius_m if registry else None,
         "onboarded": registry is not None,
+        "anpr_suitability": anpr_suitability,
     }
 
 
@@ -144,8 +148,11 @@ def list_cameras(
     dept = department_scope(principal)
     all_ids = set(registry_by_id.keys()) if dept is not None else (set(live_cams.keys()) | set(registry_by_id.keys()))
     include_raw_urls = principal.role == "admin"
+    suitability = anpr_suitability_by_camera(db, list(all_ids))
     rows = [
-        _merged_camera_view(cam_id, registry_by_id.get(cam_id), live_cams.get(cam_id), include_raw_urls)
+        _merged_camera_view(
+            cam_id, registry_by_id.get(cam_id), live_cams.get(cam_id), include_raw_urls, suitability.get(cam_id)
+        )
         for cam_id in sorted(all_ids)
     ]
     if department is not None:
@@ -451,7 +458,10 @@ def get_camera(camera_id: str, db: Session = Depends(get_db), principal: Princip
         raise HTTPException(status_code=404, detail=f"camera {camera_id} not found")
     if live_info is None and registry is None:
         raise HTTPException(status_code=404, detail=f"camera {camera_id} not found")
-    return _merged_camera_view(camera_id, registry, live_info, include_raw_urls=principal.role == "admin")
+    return _merged_camera_view(
+        camera_id, registry, live_info, include_raw_urls=principal.role == "admin",
+        anpr_suitability=anpr_suitability_by_camera(db, [camera_id]).get(camera_id),
+    )
 
 
 @router.get("/{camera_id}/last-detection")

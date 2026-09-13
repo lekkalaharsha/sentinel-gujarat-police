@@ -28,8 +28,13 @@ from .. import config
 
 logger = logging.getLogger("sentinel.rtsp")
 
-# Must be set before cv2.VideoCapture is constructed.
-os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
+# Must be set before cv2.VideoCapture is constructed.  `stimeout` is an
+# FFmpeg socket I/O timeout in microseconds; without it a stalled TCP peer can
+# hold cap.read() forever and bypass our failure/backoff path.
+os.environ.setdefault(
+    "OPENCV_FFMPEG_CAPTURE_OPTIONS",
+    f"rtsp_transport;tcp|stimeout;{config.RTSP_READ_TIMEOUT_US}",
+)
 
 
 @dataclass
