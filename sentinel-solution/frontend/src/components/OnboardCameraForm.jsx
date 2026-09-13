@@ -39,7 +39,7 @@ export default function OnboardCameraForm({ onOnboarded }) {
         install_date: form.install_date || null,
         coverage_radius_m: form.coverage_radius_m !== "" ? Number(form.coverage_radius_m) : null,
       });
-      setStatus({ ok: `onboarded ${form.id}` });
+      setStatus({ ok: `registered metadata for ${form.id}` });
       setForm({
         id: "", department: "", location_name: "", latitude: "", longitude: "",
         camera_type: "", is_restricted_zone: false, expected_direction_deg: "",
@@ -53,8 +53,9 @@ export default function OnboardCameraForm({ onOnboarded }) {
 
   return (
     <form onSubmit={submit} className="onboard-form">
-      <h3>Onboard a camera</h3>
-      <input placeholder="Camera ID (e.g. cam31)" value={form.id} onChange={(e) => set("id", e.target.value)} />
+      <h3>Onboard a catalogue camera</h3>
+      <div className="onboard-form__protocol"><strong>Hackathon catalogue protocol</strong><span>Use an ID already present in the sandbox catalogue. Registry metadata is saved here; the server supplies the RTSP / WHEP / HLS feed path and keeps stream credentials out of this form.</span></div>
+      <input placeholder="Catalogue camera ID (e.g. cam31)" value={form.id} onChange={(e) => set("id", e.target.value)} />
       <input placeholder="Department (e.g. Police)" value={form.department} onChange={(e) => set("department", e.target.value)} />
       <input placeholder="Location name" value={form.location_name} onChange={(e) => set("location_name", e.target.value)} />
       <div className="onboard-form__coords">
@@ -92,7 +93,7 @@ export default function OnboardCameraForm({ onOnboarded }) {
           onChange={(e) => set("coverage_radius_m", e.target.value)}
         />
       </div>
-      <button type="submit">Onboard</button>
+      <button type="submit">Register camera metadata</button>
       {status?.ok && <p className="onboard-form__ok">{status.ok}</p>}
       {status?.error && <p className="onboard-form__error">{status.error}</p>}
     </form>
