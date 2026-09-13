@@ -42,7 +42,7 @@ from . import evidence_class as evclass
 from .anpr import PlateReader
 from .attributes import MakeModelClassifier, StubMakeModelClassifier, extract_attributes
 from .detector import VehicleDetector
-from .density import DensityBatcher, PendingDensity, record_batched_counts, storage_tier_for
+from .density import DensityBatcher, PendingDensity, record_batched_counts
 from .identity import identity_resolver
 from .plate_detector import PlateDetector, StubPlateDetector, crop_plate, enhance_plate_crop
 from .reid import EMBEDDING_DIM, ColorHistogramEncoder, ReIdEncoder
@@ -207,7 +207,6 @@ class AnalyticsPipeline:
                     plate_confidence=plate_confidence,
                     embedding=embedding,
                     observed_at=observed_at,
-                    storage_tier=storage_tier_for(observed_at),
                     camera_id=camera_id,
                 )
 
