@@ -397,6 +397,7 @@ def search_by_attributes(
     out = []
     for e in events:
         cam = cameras.get(e.camera_id)
+        evidence_class = _cls(e)
         out.append(
             {
                 "camera_id": e.camera_id,
@@ -406,6 +407,8 @@ def search_by_attributes(
                 "plate_confidence": e.plate_confidence,
                 "vehicle_type": e.vehicle_type,
                 "color": e.color,
+                "evidence_class": evidence_class,
+                "evidence_class_reason": ec.describe(evidence_class, e.link_method),
             }
         )
     return {"query": query_desc, "matches": out, "total_count": total_count, "truncated": total_count > 200}

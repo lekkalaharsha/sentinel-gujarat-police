@@ -29,7 +29,7 @@ const TIER = {
   },
 };
 
-function TierBadge({ cls }) {
+export function TierBadge({ cls }) {
   const t = TIER[cls] || TIER.LEAD_ONLY;
   return (
     <span
