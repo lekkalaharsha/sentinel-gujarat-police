@@ -59,6 +59,8 @@ _ADDITIVE_MIGRATIONS = [
     ("alert", "evidence_class_reason", "VARCHAR"),
     ("camera_registry", "analytics_degraded", "BOOLEAN"),
     ("camera_registry", "last_analytics_success_at", "DATETIME"),
+    ("camera_registry", "source_system", "VARCHAR"),
+    ("camera_registry", "snapshot_image_url", "VARCHAR"),
 ]
 
 

@@ -10,12 +10,35 @@ Cross-check against `REQUIREMENTS_COVERAGE.md` (the authoritative
 deliverable-status matrix) and `sentinel-solution/README.md` ("Known
 issues") before trusting this file if it's more than a day or two old.
 
-## 2026-09-13 — independent-review fixes + real live-sandbox verification (done)
+## 2026-09-13 (continued) — Model 2 "≥2 different systems" closed (done)
 
-**Highest-priority remaining item is unchanged and still not started: the
-own-feed demo video (2-3 min, §9.3) and the Model 2 "≥2 different systems"
-proof/clarification.** Everything below is supporting work, not a
-substitute for those two.
+Per CLAUDE.md §10, faking or relabeling a single source was ruled out;
+building a token department-VMS integration "just to check the box" was
+already documented as theater (`model-2-unified-viewing/IMPLEMENTATION_PLAN.md`).
+Instead: found and integrated a real, independently-operated, public
+government system as System B — Caltrans District 3's public CCTV API
+(`https://cwwp2.dot.ca.gov/data/d3/cctv/cctvStatusD03.json`, no API key).
+`app/external_camera_source.py` (new module, ~130 lines) polls it and
+upserts into `CameraRegistry` with `source_system="caltrans_d3_public_api"`,
+registry-only so `StreamManager`/the ANPR pipeline never touches it as an
+RTSP source. Frontend: `SnapshotView.jsx` renders it inside the existing
+`CameraGridView` as a periodically-refreshed still image with an explicit
+"EXTERNAL SOURCE — periodic snapshot, not live video" badge — one unified
+viewer, two genuinely independent systems, each honestly labelled by real
+feed type, not two lookalike tiles. Live-verified against the real
+endpoint (found and fixed a real bug in the process: `fetch_raw`'s
+original 10s timeout failed against the real ~850KB/13s district
+payload — bumped to 30s). 4 new regression tests
+(`tests/test_external_camera_source.py`); full backend suite 159/159
+passing; frontend lint/build both clean. Off by default
+(`SENTINEL_EXTERNAL_CAMERA_SOURCE_ENABLED=false`) — set it to `true` when
+recording the demo. See `sentinel-solution/docs/models/model-2-unified-viewing/`
+for the full design note.
+
+**Still not started: the own-feed demo video (2-3 min, §9.3) — now the
+single highest-priority remaining item**, see the P0 section below.
+
+## 2026-09-13 — independent-review fixes + real live-sandbox verification (done)
 
 Fixed, tested, and committed (4 commits, `feature/statewide-operations-nav`):
 

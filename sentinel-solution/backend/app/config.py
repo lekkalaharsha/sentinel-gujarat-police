@@ -177,6 +177,21 @@ DEMO_PARTNER_FIXTURE_PATH = os.environ.get(
 # create duplicate FederatedEvent rows.
 FEDERATION_INGEST_INTERVAL_S = float(os.environ.get("SENTINEL_FEDERATION_INGEST_INTERVAL_S", "120"))
 
+# Model 2's "unified viewer connecting >=2 different systems" — System B is
+# Caltrans District 3's real, public, unauthenticated CCTV API (see
+# external_camera_source.py). Off by default: this makes a real outbound
+# network call, which must never happen implicitly during tests or a plain
+# `python -m app.main` run. Enable explicitly for the two-system demo.
+EXTERNAL_CAMERA_SOURCE_ENABLED = os.environ.get("SENTINEL_EXTERNAL_CAMERA_SOURCE_ENABLED", "false").lower() == "true"
+EXTERNAL_CAMERA_SOURCE_URL = os.environ.get(
+    "SENTINEL_EXTERNAL_CAMERA_SOURCE_URL", "https://cwwp2.dot.ca.gov/data/d3/cctv/cctvStatusD03.json"
+)
+# Bounded on purpose — this is a proof of direct multi-system integration
+# for a Gujarat Police demo, not a real deployment onboarding all of
+# Caltrans District 3's cameras.
+EXTERNAL_CAMERA_SOURCE_MAX_CAMERAS = int(os.environ.get("SENTINEL_EXTERNAL_CAMERA_SOURCE_MAX_CAMERAS", "6"))
+EXTERNAL_CAMERA_SOURCE_POLL_INTERVAL_S = float(os.environ.get("SENTINEL_EXTERNAL_CAMERA_SOURCE_POLL_INTERVAL_S", "300"))
+
 # Rate limiting (api/rate_limit.py): requests per API key (or client IP)
 # per 60s window, excluding /health and /live/* (high-frequency HLS
 # polling). Generous default for a pilot with a handful of keys — this

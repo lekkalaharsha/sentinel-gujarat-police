@@ -1,12 +1,12 @@
 import { useMemo } from "react";
-import CameraGridView from "./CameraGridView";
+import LiveMapView from "./LiveMapView";
 import AlertsPanel from "./AlertsPanel";
 import StatusTag from "./StatusTag";
 
 // Model 4's "centralised monitoring" deliverable, built by composing what
 // Model 2 already ships — NOT a new video pipeline. A statewide control
 // room is the same primitives (live HLS tiles, health state, alerts) at a
-// different console, not different code; duplicating CameraGridView/
+// different console, not different code; duplicating the Live Network/
 // AlertsPanel here just to relabel them would be exactly the "Model 4
 // version of a working screen" the task says not to build.
 export default function CentralMonitoringView({ cameras, health }) {
@@ -37,7 +37,7 @@ export default function CentralMonitoringView({ cameras, health }) {
         <div className="card2 kpi-row2">
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <StatusTag kind="LIVE" />
-            <span style={{ fontSize: 11, color: "var(--text-dim)" }}>1 / 4 / 9 tile wall</span>
+            <span style={{ fontSize: 11, color: "var(--text-dim)" }}>4 / 6 tile wall</span>
           </div>
         </div>
       </div>
@@ -53,7 +53,7 @@ export default function CentralMonitoringView({ cameras, health }) {
           streams at once — a real deployment routes to it by district/incident, the same
           selective-viewing pattern this pilot's tile cap already demonstrates.
         </p>
-        <CameraGridView cameras={cameras} />
+        <LiveMapView cameras={cameras} />
       </div>
 
       <div className="cols2">

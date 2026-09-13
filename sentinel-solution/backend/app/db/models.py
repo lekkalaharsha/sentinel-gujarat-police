@@ -117,6 +117,22 @@ class CameraRegistry(Base):
     # map renders no circle for it rather than a misleading dot-sized one.
     coverage_radius_m = Column(Float, nullable=True)
 
+    # Model 2's "unified viewer connecting >=2 different systems" —
+    # NULL means this row is a real Gujarat sandbox camera; a non-null
+    # value (e.g. "caltrans_d3_public_api") marks it as onboarded from a
+    # genuinely independent external system (see external_camera_source.py).
+    # StreamManager/the ANPR pipeline only ever reads from catalogue.py's
+    # CatalogueClient, never from this column, so an external row can never
+    # be mistaken for a live RTSP-analyzable Gujarat camera.
+    source_system = Column(String, nullable=True)
+    # Direct image URL for an external, snapshot-only (not continuous
+    # video) source. The frontend must render this as a periodically-
+    # refreshed still image with an explicit "external / snapshot" label,
+    # never inside the same live-HLS <video> tile used for sandbox cameras
+    # (CLAUDE.md 24.11 — a polished UI must not conceal a truthful
+    # distinction in feed type).
+    snapshot_image_url = Column(String, nullable=True)
+
 
 class VehicleEvent(Base):
     """One sighting of a vehicle at a camera/time — the raw material for

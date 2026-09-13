@@ -48,6 +48,7 @@ def _serialize(a: Alert) -> dict:
 def list_alerts(
     db: Session = Depends(get_db),
     limit: int = 100,
+    camera_id: str | None = None,
     principal: Principal = Depends(require_role("investigator")),
 ):
     query = db.query(Alert)
@@ -56,6 +57,8 @@ def list_alerts(
         query = query.join(CameraRegistry, Alert.camera_id == CameraRegistry.id).filter(
             CameraRegistry.department == department
         )
+    if camera_id is not None:
+        query = query.filter(Alert.camera_id == camera_id)
     alerts = query.order_by(Alert.created_at.desc()).limit(limit).all()
     return [_serialize(a) for a in alerts]
 

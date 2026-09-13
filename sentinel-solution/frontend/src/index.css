@@ -53,6 +53,7 @@
 
 body {
   margin: 0;
+  background: var(--bg);
 }
 
 #root {
@@ -90,6 +91,13 @@ a {
 ::-webkit-scrollbar-thumb {
   background: var(--border-strong);
   border-radius: 5px;
+}
+
+/* Operations-console baseline: quiet chrome, high information contrast, and
+   a responsive layout that remains usable on a judge's laptop display. */
+::selection { background: rgba(34, 211, 238, 0.28); color: var(--text-h); }
+button:focus-visible, input:focus-visible, select:focus-visible, .navitem:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
 }
 
 /* Evidence-state badge — the one visual element shown across every screen

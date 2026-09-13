@@ -110,6 +110,14 @@ def _merged_camera_view(
         "coverage_radius_m": registry.coverage_radius_m if registry else None,
         "onboarded": registry is not None,
         "anpr_suitability": anpr_suitability,
+        # Model 2's "unified viewer connecting >=2 different systems": null
+        # source_system = a real Gujarat sandbox camera; a non-null value
+        # marks a row onboarded from a genuinely independent external
+        # system (see external_camera_source.py). snapshot_image_url is
+        # only ever set for such rows and must be rendered as a
+        # periodically-refreshed still image, never as live HLS video.
+        "source_system": registry.source_system if registry else None,
+        "snapshot_image_url": registry.snapshot_image_url if registry else None,
     }
 
 
@@ -505,4 +513,46 @@ def last_detection(
                 if event.bbox_x1 is not None else None
             ),
         },
+    }
+
+
+@router.get("/{camera_id}/stats")
+def camera_stats(
+    camera_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("viewer")),
+):
+    """Bounded recent-sighting summary for the camera detail panel.
+
+    The count covers at most the latest 1,000 events observed in the last
+    24 hours.  The explicit cap keeps an info-panel open from becoming an
+    unbounded scan on a high-volume camera; ``truncated`` tells the client
+    when it is a lower bound rather than a complete 24-hour count.
+    """
+    registry = db.get(CameraRegistry, camera_id)
+    dept = department_scope(principal)
+    if dept is not None and (registry is None or registry.department != dept):
+        raise HTTPException(status_code=404, detail=f"camera {camera_id} not found")
+    if registry is None and catalogue.get(camera_id) is None:
+        raise HTTPException(status_code=404, detail=f"camera {camera_id} not found")
+
+    window_started_at = dt.datetime.utcnow() - dt.timedelta(hours=24)
+    events = (
+        db.query(VehicleEvent)
+        .filter(VehicleEvent.camera_id == camera_id, VehicleEvent.observed_at >= window_started_at)
+        .order_by(VehicleEvent.observed_at.desc())
+        .limit(1000)
+        .all()
+    )
+    breakdown = {"CONFIRMED": 0, "PROBABLE": 0, "LEAD_ONLY": 0}
+    from ..analytics import evidence_class as ec
+    for event in events:
+        breakdown[ec.classify(event.plate, event.link_method)] += 1
+    return {
+        "camera_id": camera_id,
+        "window_hours": 24,
+        "window_started_at": window_started_at.isoformat(),
+        "sighting_count": len(events),
+        "by_evidence_class": breakdown,
+        "truncated": len(events) == 1000,
     }

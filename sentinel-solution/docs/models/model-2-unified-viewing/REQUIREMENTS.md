@@ -27,24 +27,25 @@ Official spec text:
 
 | Deliverable | Status | Evidence |
 |---|---|---|
-| Unified viewer connecting ≥2 different systems | 🟡 **Partial** | The viewer architecture is system-agnostic (any RTSP/HLS source registered in Model 1's registry), but the live sandbox is one system with 30 cameras — "≥2 different systems" isn't literally demonstrated because only one sandbox exists to connect to. Not a code gap; see `IMPLEMENTATION_PLAN.md`. |
+| Unified viewer connecting ≥2 different systems | ✅ **Built and verified 2026-09-13** | System A: the Gujarat sandbox (live RTSP/HLS, ANPR-processed). System B: Caltrans District 3's real, independently-operated, public CCTV API (`https://cwwp2.dot.ca.gov/data/d3/cctv/cctvStatusD03.json`, no API key) — `app/external_camera_source.py` polls it, upserts into `CameraRegistry` with `source_system="caltrans_d3_public_api"`, and the frontend's `CameraGridView`/`SnapshotView` render it alongside live sandbox tiles, honestly labelled "EXTERNAL SOURCE — periodic snapshot, not live video" (it's a refreshed still image, not continuous video — not overclaimed as such). Live-verified against the real endpoint: 6 real Sacramento-area cameras (`ext-caltrans-1`..) fetched with real coordinates and live snapshot URLs. Off by default (`SENTINEL_EXTERNAL_CAMERA_SOURCE_ENABLED=false`) — enable for the demo. See `IMPLEMENTATION_PLAN.md`. |
 | ANPR demonstration | ✅ **Built, verified** | Same real-footage evidence as above; `demo_end_to_end.py` + `DEMO_SCRIPT_OWN_FEED.md` |
 | Searchable metadata dashboard | ✅ **Built** | `VehicleIntelligence.jsx`/`SearchView.jsx`/`VehicleTimeline.jsx` — attribute search, movement timeline with explainability (`link_method`/`link_score`/`link_time_gap_s` surfaced in the UI) |
 | Architecture note confirming departmental system independence | ✅ **Built** | `HLD.md` §3 — direct-connect, no middleware; existing VMS keep running unaffected |
 
 ## What's still honestly open
 
-Only one 🟡: **"≥2 different systems."** This is a sandbox-availability
-limit, not an unbuilt feature — the code path that would connect to a
-second departmental VMS is identical to the one already connecting to the
-first (a new catalogue entry + RTSP/HLS URL, no code change). It doesn't
-block the mandatory live technical-evaluation test case (cross-camera
-vehicle tracking within the one available sandbox, watchlist alerts, GIS
-visualization) — those are all verified working. The related test-case
-item "onboard ~50 heterogeneous cameras" (§C) is similarly 🟡: 30 real
-cameras are onboarded and live, not 50, and the shortfall is sandbox
-camera count, not onboarding-pipeline capacity (Model 1's bulk/API
-onboarding already handles arbitrary count).
+**"≥2 different systems" is now closed** (2026-09-13) — see the table
+above. One caveat carried forward honestly: System B (Caltrans D3) is a
+camera/imagery-only integration — no ANPR/analytics run on it, and it's
+a snapshot feed (~60s refresh), not continuous video. That's disclosed
+in the UI badge, not hidden.
+
+The related test-case item "onboard ~50 heterogeneous cameras" (§C) is
+still 🟡: 30 real Gujarat sandbox cameras are onboarded and live, not 50,
+and the shortfall is sandbox camera count, not onboarding-pipeline
+capacity (Model 1's bulk/API onboarding already handles arbitrary count;
+the 6 Caltrans cameras are a second-system proof, not a count-padding
+device, and are excluded from that Gujarat-specific count on purpose).
 
 One architectural honesty note carried over from `ARCHITECTURE.md`: the
 cross-camera identity-resolution embedding is a simpler HSV-histogram +

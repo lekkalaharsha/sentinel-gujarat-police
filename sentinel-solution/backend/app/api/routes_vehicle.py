@@ -57,8 +57,9 @@ def _cameras_by_id(db: Session, camera_ids) -> dict:
 @router.get("/recent")
 def recent_detections(
     limit: int = 20,
+    camera_id: str | None = None,
     db: Session = Depends(get_db),
-    _principal: Principal = Depends(require_role("investigator")),
+    principal: Principal = Depends(require_role("investigator")),
 ):
     """Live operational feed — the command-center 'what's happening right
     now' view, distinct from the purpose-bound individual lookups below
@@ -68,7 +69,15 @@ def recent_detections(
     a targeted investigation query — the distinction that keeps
     purpose-binding meaningful is per-plate lookup, not "is any recent-
     activity view allowed to exist at all"."""
-    events = db.query(VehicleEvent).order_by(VehicleEvent.observed_at.desc()).limit(limit).all()
+    query = db.query(VehicleEvent)
+    department = department_scope(principal)
+    if department is not None:
+        query = query.join(CameraRegistry, VehicleEvent.camera_id == CameraRegistry.id).filter(
+            CameraRegistry.department == department
+        )
+    if camera_id is not None:
+        query = query.filter(VehicleEvent.camera_id == camera_id)
+    events = query.order_by(VehicleEvent.observed_at.desc()).limit(limit).all()
     cameras = _cameras_by_id(db, (e.camera_id for e in events))
     out = []
     for e in events:

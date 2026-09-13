@@ -33,6 +33,7 @@ from .api import (
 from .api.auth import ensure_default_admin_key
 from .api.rate_limit import RateLimitMiddleware
 from .catalogue import catalogue
+from . import external_camera_source
 from .db.models import CameraRegistry
 from .db.retention import purge_expired
 from .db.session import SessionLocal, init_db
@@ -261,6 +262,30 @@ def on_startup():
             time.sleep(config.FEDERATION_INGEST_INTERVAL_S)
 
     threading.Thread(target=federation_ingest_loop, name="federation-ingest", daemon=True).start()
+
+    if config.EXTERNAL_CAMERA_SOURCE_ENABLED:
+        def external_camera_sync_loop():
+            # Model 2's "unified viewer connecting >=2 different systems" —
+            # syncs Caltrans D3's real public CCTV API into CameraRegistry
+            # on a slow poll. Registry-only: never touches catalogue.py, so
+            # StreamManager/the ANPR pipeline never attempts to open these
+            # as RTSP streams (see external_camera_source.py).
+            while True:
+                try:
+                    session = SessionLocal()
+                    try:
+                        n = external_camera_source.sync_into_registry(session)
+                        logger.info("external camera source sync: %d camera(s) from %s", n, external_camera_source.SOURCE_LABEL)
+                    finally:
+                        session.close()
+                except Exception:  # noqa: BLE001 — a sync failure must not kill the loop
+                    logger.exception("external camera source sync failed")
+                time.sleep(config.EXTERNAL_CAMERA_SOURCE_POLL_INTERVAL_S)
+
+        threading.Thread(target=external_camera_sync_loop, name="external-camera-sync", daemon=True).start()
+    else:
+        logger.info("external camera source sync disabled (SENTINEL_EXTERNAL_CAMERA_SOURCE_ENABLED=false)")
+
     logger.info("Sentinel backend started. CDN host=%s stream host=%s", config.CDN_HOST, config.STREAM_HOST)
 
 
