@@ -15,7 +15,8 @@ import {
 const NAV = [
   { group: "Operations", items: [
     { id: "command", label: "Command Centre", icon: IconGrid },
-    { id: "livemap", label: "Live Network", icon: IconMap },
+    { id: "livemap", label: "State Map", icon: IconMap },
+    { id: "livenetwork", label: "Live Network", icon: IconCamera },
   ]},
   { group: "Investigations", items: [
     { id: "vehicle", label: "Vehicle Search", icon: IconCar },

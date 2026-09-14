@@ -4,6 +4,7 @@ import Sidebar from "./components/Sidebar";
 import Topbar from "./components/Topbar";
 import CommandCenter from "./components/CommandCenter";
 import LiveMapView from "./components/LiveMapView";
+import LiveNetworkView from "./components/LiveNetworkView";
 import GeoTemporalGraph from "./components/GeoTemporalGraph";
 import VehicleIntelligence from "./components/VehicleIntelligence";
 import CameraNetworkView from "./components/CameraNetworkView";
@@ -134,7 +135,8 @@ export default function App() {
         <div className="views2">
           <div className="view2 active">
             {view === "command" && <CommandCenter cameras={cameras} health={health} gapAnalysis={gapAnalysis} alerts={alerts} route={vehicleResult?.sightings} onOpenAlert={() => setView("alerts")} />}
-            {view === "livemap" && <LiveMapView cameras={cameras} />}
+            {view === "livemap" && <LiveMapView cameras={cameras} route={vehicleResult?.sightings} selectedCameraId={selectedCameraId} onSelectCamera={openCamera} />}
+            {view === "livenetwork" && <LiveNetworkView cameras={cameras} />}
             {view === "graph" && <GeoTemporalGraph cameras={cameras} initialPlate={pendingPlate} />}
             {view === "vehicle" && <VehicleIntelligence key={`vehicle-${pendingPlate}`} initialPlate={pendingPlate} onResult={setVehicleResult} onOpenGraph={openGraph} />}
             {view === "network" && (

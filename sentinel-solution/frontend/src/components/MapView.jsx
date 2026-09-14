@@ -28,22 +28,47 @@ function markerColor(status) {
   return "#16a34a";
 }
 
+const UNASSIGNED_COLOR = "#9ca3af";
+
+// Deterministic string -> hue, so a given department/camera_type value always
+// gets the same color across renders and between the map and its legend
+// (LiveMapView derives the same legend entries from the same cameras array).
+function hashHue(value) {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+  return hash % 360;
+}
+
+// Model 1 spec requires department/type map layers (see MODULE_GAP_ANALYSIS.md
+// and REQUIREMENTS.md's R1) — this is the shared color function between the
+// map markers and LiveMapView's legend, so "unassigned"/"unknown" always
+// renders as UNASSIGNED_COLOR in both places.
+export function categoryColor(value) {
+  if (!value) return UNASSIGNED_COLOR;
+  return `hsl(${hashHue(String(value))}, 65%, 45%)`;
+}
+
+function cameraColor(cam, mode) {
+  if (mode === "department") return categoryColor(cam.department);
+  if (mode === "camera_type") return categoryColor(cam.camera_type);
+  return markerColor(cam.live ? "healthy" : "unhealthy");
+}
+
 function isAgeing(installDate) {
   if (!installDate) return false;
   const ageYears = (Date.now() - new Date(installDate).getTime()) / (365.25 * 24 * 3600 * 1000);
   return ageYears > AGEING_THRESHOLD_YEARS;
 }
 
-export default function MapView({ cameras, route, onSelectCamera, selectedCameraId }) {
+export default function MapView({ cameras, route, onSelectCamera, selectedCameraId, mode = "health" }) {
   const located = useMemo(
     () => cameras.filter((c) => c.latitude != null && c.longitude != null),
     [cameras]
   );
   const routePoints = useMemo(
-    () =>
-      (route || [])
-        .filter((s) => s.latitude != null && s.longitude != null)
-        .map((s) => [s.latitude, s.longitude]),
+    () => (route || []).filter((s) => s.latitude != null && s.longitude != null),
     [route]
   );
 
@@ -69,35 +94,40 @@ export default function MapView({ cameras, route, onSelectCamera, selectedCamera
           />
         ) : null
       )}
-      {located.map((cam) => (
-        <CircleMarker
-          key={cam.id}
-          center={[cam.latitude, cam.longitude]}
-          radius={cam.id === selectedCameraId ? 10 : 7}
-          pathOptions={{
-            color: markerColor(cam.live ? "healthy" : "unhealthy"),
-            fillColor: markerColor(cam.live ? "healthy" : "unhealthy"),
-            fillOpacity: 0.85,
-            dashArray: isAgeing(cam.install_date) ? "3 2" : undefined,
-          }}
-          eventHandlers={{ click: () => onSelectCamera?.(cam.id) }}
-        >
-          <Popup>
-            <strong>{cam.id}</strong>
-            <br />
-            {cam.location || "location unknown"}
-            <br />
-            {cam.live ? "live" : "offline"} · {cam.codec || "codec unknown"}
-            {cam.install_date && (
-              <>
-                <br />
-                Installed {new Date(cam.install_date).toLocaleDateString()}
-                {isAgeing(cam.install_date) && " (ageing)"}
-              </>
-            )}
-          </Popup>
-        </CircleMarker>
-      ))}
+      {located.map((cam) => {
+        const color = cameraColor(cam, mode);
+        return (
+          <CircleMarker
+            key={cam.id}
+            center={[cam.latitude, cam.longitude]}
+            radius={cam.id === selectedCameraId ? 10 : 7}
+            pathOptions={{
+              color,
+              fillColor: color,
+              fillOpacity: 0.85,
+              dashArray: isAgeing(cam.install_date) ? "3 2" : undefined,
+            }}
+            eventHandlers={{ click: () => onSelectCamera?.(cam.id) }}
+          >
+            <Popup>
+              <strong>{cam.id}</strong>
+              <br />
+              {cam.location || "location unknown"}
+              <br />
+              {cam.live ? "live" : "offline"} · {cam.codec || "codec unknown"}
+              <br />
+              {cam.department || "department unassigned"} · {cam.camera_type || "type unknown"}
+              {cam.install_date && (
+                <>
+                  <br />
+                  Installed {new Date(cam.install_date).toLocaleDateString()}
+                  {isAgeing(cam.install_date) && " (ageing)"}
+                </>
+              )}
+            </Popup>
+          </CircleMarker>
+        );
+      })}
       {routePoints.slice(1).map((point, i) => {
         const style = ROUTE_STYLE[point.evidence_class] || ROUTE_STYLE.LEAD_ONLY;
         return (
