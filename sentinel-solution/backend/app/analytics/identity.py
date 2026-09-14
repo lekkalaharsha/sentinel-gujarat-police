@@ -61,6 +61,18 @@ from .reid import cosine_similarity
 # MAX_PLAUSIBLE_KMH-bounded speeds (see geo.py) while the gate still rejects
 # anything actually implausible within that window.
 ASSOCIATION_WINDOW = dt.timedelta(minutes=60)
+# Calibrated 2026-09-10 against real crop data (`scripts/
+# calibrate_embedding_threshold.py`, see CODEX_HANDOFF_PROMPT.md's ML-3
+# section for the full writeup) — NOT changed by that calibration, on
+# purpose. Finding: 41.87% of 3,000 confirmed-different-vehicle real crop
+# pairs scored >= 0.80 (this threshold alone is a weak discriminator), but
+# there was zero independent positive-pair data to check what raising it
+# would do to recall — the geo-feasibility gate below is doing real
+# compensating work when GPS is present, and the actual demo-lead camera
+# (cam06) has GPS set. Residual exposure: cameras with no GPS coordinates
+# rely on this threshold alone. Re-calibrate with real same-vehicle pairs
+# (a controlled test driving one vehicle past 2+ real cameras) before
+# changing this number, not off negative-side evidence alone.
 EMBEDDING_SIMILARITY_THRESHOLD = 0.80
 
 

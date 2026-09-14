@@ -12,7 +12,7 @@ from typing import Dict, Optional
 from sqlalchemy.orm import Session
 
 from ..analytics.anpr import normalize_plate
-from ..db.models import ALERT_STATUS_NEW, Alert, WatchlistEntry
+from ..db.models import ALERT_STATUS_ACKNOWLEDGED, ALERT_STATUS_NEW, Alert, WatchlistEntry
 
 logger = logging.getLogger("sentinel.watchlist")
 
@@ -30,9 +30,14 @@ class WatchlistService:
         logger.info("watchlist loaded: %d entries", len(self._plates))
 
     def add(self, session: Session, plate: str, reason: str) -> None:
+        """Upsert: `WatchlistEntry.plate` is unique, so re-adding an
+        already-listed plate updates its reason instead of raising."""
         plate = normalize_plate(plate)
-        entry = WatchlistEntry(plate=plate, reason=reason)
-        session.add(entry)
+        existing = session.query(WatchlistEntry).filter_by(plate=plate).first()
+        if existing is not None:
+            existing.reason = reason
+        else:
+            session.add(WatchlistEntry(plate=plate, reason=reason))
         session.commit()
         with self._lock:
             self._plates[plate] = reason
@@ -49,15 +54,15 @@ class WatchlistService:
             return None
         # A vehicle lingering in one camera's view is processed as several
         # short tracks/sightings (temporal fusion finalizes on any gap, see
-        # tracker.py), each independently re-matching the watchlist — without
-        # this check, one real loitering event became a dozen duplicate "new"
-        # alerts for the same plate at the same camera. One open alert per
-        # (plate, camera) is enough; a genuinely new visit after the last one
-        # was acknowledged/resolved/dismissed still raises its own alert.
+        # tracker.py), each independently re-matching the watchlist. Only
+        # RESOLVED/DISMISSED clears the dedup window — NEW or ACKNOWLEDGED
+        # still counts as open, since acknowledging ("I've seen this") isn't
+        # the same as the case being closed and shouldn't let the very next
+        # track chunk of the same still-present vehicle raise a duplicate.
         existing_open = (
             session.query(Alert)
             .filter_by(plate=normalize_plate(plate), camera_id=camera_id)
-            .filter(Alert.status == ALERT_STATUS_NEW)
+            .filter(Alert.status.in_([ALERT_STATUS_NEW, ALERT_STATUS_ACKNOWLEDGED]))
             .first()
         )
         if existing_open is not None:

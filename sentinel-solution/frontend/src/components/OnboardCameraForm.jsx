@@ -12,6 +12,7 @@ export default function OnboardCameraForm({ onOnboarded }) {
   const [form, setForm] = useState({
     id: "", department: "", location_name: "", latitude: "", longitude: "",
     camera_type: "", is_restricted_zone: false, expected_direction_deg: "",
+    install_date: "", coverage_radius_m: "",
   });
   const [status, setStatus] = useState(null);
 
@@ -35,11 +36,14 @@ export default function OnboardCameraForm({ onOnboarded }) {
         camera_type: form.camera_type || null,
         is_restricted_zone: form.is_restricted_zone,
         expected_direction_deg: form.expected_direction_deg !== "" ? Number(form.expected_direction_deg) : null,
+        install_date: form.install_date || null,
+        coverage_radius_m: form.coverage_radius_m !== "" ? Number(form.coverage_radius_m) : null,
       });
       setStatus({ ok: `onboarded ${form.id}` });
       setForm({
         id: "", department: "", location_name: "", latitude: "", longitude: "",
         camera_type: "", is_restricted_zone: false, expected_direction_deg: "",
+        install_date: "", coverage_radius_m: "",
       });
       onOnboarded?.();
     } catch (err) {
@@ -75,6 +79,19 @@ export default function OnboardCameraForm({ onOnboarded }) {
         value={form.expected_direction_deg}
         onChange={(e) => set("expected_direction_deg", e.target.value)}
       />
+      <div className="onboard-form__coords">
+        <input
+          type="date"
+          placeholder="Install date (optional, enables ageing-infrastructure tracking)"
+          value={form.install_date}
+          onChange={(e) => set("install_date", e.target.value)}
+        />
+        <input
+          placeholder="Coverage radius, metres (optional, GIS map layer)"
+          value={form.coverage_radius_m}
+          onChange={(e) => set("coverage_radius_m", e.target.value)}
+        />
+      </div>
       <button type="submit">Onboard</button>
       {status?.ok && <p className="onboard-form__ok">{status.ok}</p>}
       {status?.error && <p className="onboard-form__error">{status.error}</p>}

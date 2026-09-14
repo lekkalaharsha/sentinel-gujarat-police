@@ -1,0 +1,31 @@
+id,location,department,vendor,camera_type,latitude,longitude,is_healthy,last_seen_live_at,is_restricted_zone,expected_direction_deg,onboarded,live
+cam01,01 Chiman bhai Bridge,Police,,,23.0338,72.5619,False,2026-09-10T01:37:03.709219,False,,True,True
+cam02,02 Janpath,Municipal Corporation,,,23.03,72.51,False,2026-09-10T01:37:04.184576,False,,True,True
+cam03,03 O.N.G.C. Office,GSRTC,,,23.2237,72.6486,True,2026-09-10T02:21:50.268698,False,,True,True
+cam04,04 Paldi Circle,Health,,,23.22,72.65,False,2026-09-10T01:37:04.406275,False,,True,True
+cam05,05 Visat teen Rasta,Panchayat,,,23.245,72.49,False,2026-09-10T01:37:03.883512,False,,True,True
+cam06,06 Timbavadi gate-Junagadh,,,,21.5222,70.4579,True,2026-09-10T02:21:51.085327,False,,True,True
+cam07,07 hero-showroom-gir-somnath,,,,20.888,70.4017,False,2026-09-10T01:37:02.012483,False,,True,True
+cam08,08 majewadi-gate-junagadh,,,,21.5222,70.4579,False,2026-09-10T01:37:02.309639,False,,True,True
+cam09,09 new-bypass-near-by-circle-junagadh-2,,,,21.5222,70.4579,False,2026-09-10T01:37:04.614213,False,,True,True
+cam10,10 char-chowk-road-2-junagadh,,,,21.5222,70.4579,True,2026-09-10T02:21:48.746018,False,,True,True
+cam11,11 dolatpara-junagadh,,,,21.5222,70.4579,False,2026-09-10T01:37:04.305575,False,,True,True
+cam12,12 Tri Mandir Adalaj Tollnaka,,,,23.1667,72.5833,False,2026-09-10T01:37:04.632096,False,,True,True
+cam13,13 CN Vidhyalaya,,,,,,True,2026-09-10T02:21:51.290540,False,,True,True
+cam14,14 Delight RLVD,,,,,,True,2026-09-10T02:21:51.851671,False,,True,True
+cam15,15 Suvidha park,,,,,,False,2026-09-10T01:37:02.446292,False,,True,True
+cam16,16 Visat P2,,,,23.0754,72.5514,False,2026-09-10T01:37:04.105488,False,,True,True
+cam17,17 Rajkot Bus Port CCTV,GSRTC,,,22.3039,70.8022,False,2026-09-10T01:37:03.891563,False,,True,True
+cam18,18 Rajkot CCTV,,,,22.3039,70.8022,False,2026-09-10T01:37:01.199748,False,,True,True
+cam19,"19 KHAPARIA GRAM PANCHAYAT , TALUKA GANDEVI, DISTRICT NAVSARI",Panchayat,,,20.9467,72.952,False,2026-09-10T01:37:02.010473,False,,True,True
+cam20,20 Mohanpura,,,,,,True,2026-09-10T02:21:22.755285,False,,True,True
+cam21,23 Patan Dethali Char Rasta,,,,23.8493,72.1266,False,2026-09-10T01:37:02.153198,False,,True,True
+cam22,28 BK Mervada tran Rasta,,,,,,False,2026-09-10T01:37:03.893573,False,,True,True
+cam23,30 kheram,,,,,,False,2026-09-10T01:37:01.342384,False,,True,True
+cam24,33 dehgam,,,,23.1667,72.8167,True,2026-09-10T02:21:49.675855,False,,True,True
+cam25,34 dhanori,,,,,,True,2026-09-10T02:21:50.620943,False,,True,True
+cam26,35 TANKAL,,,,,,False,2026-09-10T01:37:02.850847,False,,True,True
+cam27,36 bilimora,,,,20.7667,72.95,True,2026-09-10T02:21:51.684803,False,,True,True
+cam28,37 bilimora,,,,20.7667,72.95,False,2026-09-10T01:37:03.450268,False,,True,True
+cam29,38 bilimora,,,,20.7667,72.95,False,2026-09-10T01:37:04.075830,False,,True,True
+cam30,Gandhidham Rambaugh p2,,,,23.0753,70.1337,False,2026-09-10T01:36:58.222963,False,,True,True

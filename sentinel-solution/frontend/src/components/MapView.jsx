@@ -1,11 +1,16 @@
 import { useMemo } from "react";
-import { MapContainer, TileLayer, CircleMarker, Popup, Polyline } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Circle, Popup, Polyline } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
 // Gujarat's rough centroid — used only as the map's default view when no
 // camera has GIS coordinates yet (registry seeding is not in scope, see
 // README's "GIS mapping (Model 1)" gap note).
 const GUJARAT_CENTER = [22.2587, 71.1924];
+
+// Must match backend's SENTINEL_CAMERA_AGEING_THRESHOLD_YEARS default
+// (config.py) — display-only, not authoritative; the gap-analysis report
+// is the source of truth for which cameras actually count as ageing.
+const AGEING_THRESHOLD_YEARS = 5;
 
 function markerColor(status) {
   if (status === "alert") return "#e02424";
@@ -42,6 +47,12 @@ function cameraColor(cam, mode) {
   return markerColor(cam.live ? "healthy" : "unhealthy");
 }
 
+function isAgeing(installDate) {
+  if (!installDate) return false;
+  const ageYears = (Date.now() - new Date(installDate).getTime()) / (365.25 * 24 * 3600 * 1000);
+  return ageYears > AGEING_THRESHOLD_YEARS;
+}
+
 export default function MapView({ cameras, route, onSelectCamera, selectedCameraId, mode = "health" }) {
   const located = useMemo(
     () => cameras.filter((c) => c.latitude != null && c.longitude != null),
@@ -67,6 +78,16 @@ export default function MapView({ cameras, route, onSelectCamera, selectedCamera
         attribution='&copy; OpenStreetMap contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      {located.map((cam) =>
+        cam.coverage_radius_m ? (
+          <Circle
+            key={`coverage-${cam.id}`}
+            center={[cam.latitude, cam.longitude]}
+            radius={cam.coverage_radius_m}
+            pathOptions={{ color: "#2563eb", fillColor: "#2563eb", fillOpacity: 0.06, weight: 1 }}
+          />
+        ) : null
+      )}
       {located.map((cam) => {
         const color = cameraColor(cam, mode);
         return (
@@ -78,6 +99,7 @@ export default function MapView({ cameras, route, onSelectCamera, selectedCamera
               color,
               fillColor: color,
               fillOpacity: 0.85,
+              dashArray: isAgeing(cam.install_date) ? "3 2" : undefined,
             }}
             eventHandlers={{ click: () => onSelectCamera?.(cam.id) }}
           >
@@ -89,6 +111,13 @@ export default function MapView({ cameras, route, onSelectCamera, selectedCamera
               {cam.live ? "live" : "offline"} · {cam.codec || "codec unknown"}
               <br />
               {cam.department || "department unassigned"} · {cam.camera_type || "type unknown"}
+              {cam.install_date && (
+                <>
+                  <br />
+                  Installed {new Date(cam.install_date).toLocaleDateString()}
+                  {isAgeing(cam.install_date) && " (ageing)"}
+                </>
+              )}
             </Popup>
           </CircleMarker>
         );

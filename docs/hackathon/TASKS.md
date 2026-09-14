@@ -8,18 +8,123 @@ Cross-check against `REQUIREMENTS_COVERAGE.md` (the authoritative
 deliverable-status matrix) and `sentinel-solution/README.md` ("Known
 issues") before trusting this file if it's more than a day or two old.
 
+## Paused work — resume later
+
+- [x] **Per-reference-model module docs (Model 1–4) — drafted 2026-09-11.**
+      Started 2026-09-10 as a multi-agent Workflow run; that Workflow tool
+      wasn't available in the session that resumed this, so the remaining
+      models were drafted directly instead (research via forked
+      subagents, writing via direct file edits) — same scope, different
+      mechanism. All four module folders now exist under
+      `sentinel-solution/docs/models/`, each with `ARCHITECTURE.md`/
+      `REQUIREMENTS.md`/`RESEARCH.md`/`IMPLEMENTATION_PLAN.md`:
+      - `model-1-registry-gis/` — **re-verified 2026-09-11**: all four 🟡
+        gaps found in the original 2026-09-10 pass were independently
+        confirmed closed by `3306db6` (ageing tracking, coverage-radius
+        layer, search filters, onboarding audit trail); docs updated to
+        reflect this. Also caught and fixed a stale claim in
+        `REQUIREMENTS_COVERAGE.md` line 27 ("camera health/maintenance-
+        status monitoring" was marked fully ✅ but maintenance-status
+        beyond healthy/unhealthy was never built) — downgraded to 🟡 with
+        the same caveat as the module doc, so the two docs no longer
+        disagree.
+      - `model-2-unified-viewing/` — ground-truthed against real code;
+        no required-tier gaps against the literal spec (the one 🟡,
+        "≥2 different systems," is a sandbox-availability limit, not
+        missing code). Documented-but-skipped hardening items: WHEP
+        low-latency live view, per-camera anomaly-detection calibration,
+        FastReID/OSNet Re-ID upgrade (skipped because the sandbox lacks
+        enough cross-camera repeat sightings to validate a swap, not
+        because it'd be hard to wire in).
+      - `model-3-vms-federation/` — real build plan (not built yet, see
+        "Build Model 3" below), scoped to one real adapter (wraps our
+        existing Model 1/2 stack) + one real, independent, public dataset
+        as the second system (NYC's "Open Parking and Camera Violations"
+        open dataset, `data.cityofnewyork.us` — **revised 2026-09-11**
+        after the user rejected an initial self-authored-fixture plan; a
+        research pass found and selected this real dataset instead), a
+        polled `FederatedEvent` table (not Kafka), and a minimal
+        correlation dashboard — ~12.5 hrs / 1.5–2 days estimated. Zero
+        real cross-system plate overlap is expected by construction
+        (different countries) and must be disclosed everywhere a
+        correlation result is shown; any populated demo match needs one
+        clearly-labeled synthetic overlay, not a blended-in real one.
+      - `model-4-central-vms/` — roadmap-only, explicitly not built.
+        Citations independently fact-checked and corrected 2026-09-11
+        (an initial research pass's unconfirmed figures were replaced):
+        Ahmedabad's Command and Control Centre (Paldi, operational since
+        2018) confirmed at ~6,000 cameras including 1,600 at major
+        traffic junctions (deshgujarat.com) as the realistic integration
+        target rather than a fictional greenfield build; NIST FRVT Part 3
+        (NISTIR 8280)'s confirmed finding of up to 7,200× within-group
+        false-positive-rate variation (not the earlier unconfirmed
+        "10×–100×"/specific-demographic-group claim) and Delhi Police's
+        confirmed 2% accuracy figure (not "1–2%", per its own 2018 Delhi
+        High Court statement) as the specific grounding for excluding
+        Face Recognition from any
+        committed roadmap; inherits `SCALABILITY.md` §6's phased rollout
+        rather than redefining it.
+      **Not yet done: user review.** Presented for feedback in this
+      session before any tagging — planned tags per the original note
+      (`v0.2.0`–`v0.5.0` per model) are still pending the user's go-ahead,
+      since a prior approval doesn't carry forward per this repo's git
+      rules.
+
+- [x] **Build Model 3 (VMS Federation & Middleware) — built 2026-09-11.**
+      Decided 2026-09-10 to sequence this after Model 1+2 closed (they had,
+      per `TASKS.md`'s own tracking); user gave explicit go-ahead
+      2026-09-11 and it shipped the same session. Real, tested:
+      `analytics/federation.py` (`VMSAdapter` Protocol, `SentinelAdapter`
+      wrapping our own real data, `NycOpenDataAdapter` parsing a real
+      2,000-row slice of NYC Open Data's public "Open Parking and Camera
+      Violations" dataset — downloaded live from its Socrata API, not
+      fabricated), a polled `FederatedEvent` table with idempotent
+      ingest (`main.py`'s `federation_ingest_loop`), a correlation engine
+      (`routes_federation.py`'s `GET /federation/correlations`, reusing
+      Model 2's `link_score` explainability vocabulary), a frontend
+      dashboard (`FederationDashboard.jsx`), and a PDF export reusing
+      Model 1's `reportlab` pattern. 15 new regression tests, full backend
+      suite 70/70 passing. A real sample report
+      (`docs/assets/sample_federation_report.pdf`) was generated
+      end-to-end and shows **0 correlated plates** — the honestly-
+      predicted outcome (zero real plate overlap between Gujarat and NYC
+      vehicles, disclosed everywhere via the response's `honesty_note`),
+      now empirically confirmed rather than just theorized. System B is
+      real public data, not a second Gujarat departmental VMS — see
+      `sentinel-solution/docs/models/model-3-vms-federation/` for the
+      full design rationale, including the earlier rejected
+      self-authored-fixture plan and why the user asked for a real
+      dataset instead. `docs/hackathon/REQUIREMENTS_COVERAGE.md` gained a
+      new §C for this (sections C–F renumbered to D–G accordingly).
+      **Still open:** tagging (`v0.4.0` per the original plan) is pending
+      user review of this build; a demo script/video for Model 3 doesn't
+      exist yet.
+
 ## P0 — hard submission blockers
 
-- [ ] **Re-verify camera-registry auto-population before recording video.**
-      Originally: "backend has 30 live workers but registry shows 0
-      onboarded." **Partially stale** — `main.py`'s health-sync loop
-      auto-creates a bare `CameraRegistry` row for any active worker
-      (confirmed empirically 2026-09-05: a fresh DB showed "Onboarded 30"
-      with zero manual onboarding calls). What's still missing is
-      department/GIS metadata on those auto-created rows — run
-      `scripts/onboard_from_catalogue.py` for that, but the "empty-looking
-      app" risk from the original note is likely gone. Confirm this on the
-      actual recording machine before trusting it, not just this note.
+- [x] **Camera-registry auto-population — closed 2026-09-10.**
+      `main.py`'s health-sync loop auto-creates a bare `CameraRegistry`
+      row for any active worker, so the "empty-looking app" risk was
+      already gone (confirmed 2026-09-05). Ran
+      `scripts/onboard_from_catalogue.py` against the live 30-camera
+      sandbox for real to close the remaining department/GIS-metadata
+      gap. **Found and fixed a real regression risk first**: the script
+      unconditionally overwrote `department`/`latitude`/`longitude` with
+      its keyword-inference result even when that inference was `None`
+      — running it as-is would have wiped the 5 already-correct manual
+      department tags (cam01-05: Police/Municipal Corporation/GSRTC/
+      Health/Panchayat) back to unassigned. Fixed by having the script
+      fetch the current registry state first and only override a field
+      when its own inference actually found something, falling back to
+      the existing value otherwise. Verified end-to-end against the live
+      sandbox: all 30 cameras now carry real location names from the
+      catalogue; GPS coordinates populated for 22/30 (8 have no
+      confident area-centroid match); department stays honestly at 7/30
+      (cam01-05 preserved + cam17→GSRTC/cam19→Panchayat newly matched by
+      keyword) — the other 23 real camera names (street/landmark names,
+      not department-suggestive) genuinely can't be classified without
+      organizer-provided ground truth or manual per-camera investigation,
+      not a script bug. Full backend suite 55/55 passed after the fix.
 - [ ] **Record the own-feed demo video** (§9.3, 2–3 min, must show a real
       working backend, no mock-ups). Script: `DEMO_SCRIPT_OWN_FEED.md` +
       `scripts/demo_end_to_end.py` with `SENTINEL_DEMO_PERSIST=1`, then
@@ -65,43 +170,158 @@ issues") before trusting this file if it's more than a day or two old.
 
 ## P1 — do before/alongside the videos if time allows
 
-- [ ] `VehicleSearch.jsx`'s "stale plate-search race" (no request
-      sequencing → a slow first search can overwrite a faster second one)
-      needs **re-verification under its new name** — that file was deleted
-      in the frontend rebuild; the plate-search UI now lives in
-      `SearchView.jsx` and/or `VehicleIntelligence.jsx`. Unknown whether
-      the race survived the rebuild or was incidentally fixed — check
-      before assuming either way.
-- [ ] `routes_auth.py`'s `create_api_key` still returns `{"error": ...}`
-      with HTTP 200 instead of a proper 400 for an invalid role — cheap
-      fix. (The matching `routes_cameras.py` `get_camera` issue TASKS.md
-      used to list here is already fixed — that endpoint now raises a
-      proper `HTTPException` consistently, confirmed by reading the
-      current code 2026-09-05.)
-- [ ] `search_by_attributes` truncates to 200 results with no total-count
-      signal — an investigator can get zero recent hits with no
-      indication results were cut off. (`routes_vehicle.py`)
-- [ ] Sample gap-analysis PDF export (endpoint exists, no exported sample
-      produced yet for the submission).
-- [ ] Close the 3 documentation-honesty points from `MODULE_GAP_ANALYSIS.md`:
-      multi-vendor claim wording ("designed for" vs. "demonstrated with"),
-      private/commercial CCTV coverage (currently unaddressed), external-DB
-      -integration honesty (confirm HLD is explicit VAHAN/SARTHI/etc. is
-      design-only).
-- [ ] `CODEX_HANDOFF_PROMPT.md`'s ML-3: empirically justify
-      `EMBEDDING_SIMILARITY_THRESHOLD=0.80` — still blocked on lacking
-      same-vehicle real-footage pairs; the extended deadline may make this
-      newly worth attempting (e.g. a controlled test driving one vehicle
-      past 2+ real sandbox cameras) rather than deferring further.
-- [ ] **New 2026-09-05:** per-character (or position-weighted) consensus
-      voting in `tracker.py`'s `consensus_plate()` — currently exact-string
-      majority vote, which splits `cam06`'s real 8-valid-reads-out-of-13
-      across ~6 distinct near-matching strings (below the 0.5 confidence
-      floor). A character-level vote per position would likely recover a
-      single confident read from the same real data. See `HLD.md` §3 for
-      the full context.
+**Re-researched 2026-09-10** (4 parallel research-only passes, no code
+changed yet — findings below replace the previous vague entries with
+confirmed status + a concrete described fix for each).
+
+- [x] **Stale-search race — fixed 2026-09-10.** Confirmed the race
+      survived the frontend rebuild in both `VehicleIntelligence.jsx` and
+      `SearchView.jsx` (`submit()` in each fired a plain `fetch` with no
+      request-sequencing, so a slow first search could overwrite a faster
+      second search's results). Fixed with an `AbortController` per
+      submit in both components: the previous in-flight request is
+      aborted before a new one starts, and `api.js`'s `vehicleHistory`/
+      `searchByAttributes` now accept and forward an optional `signal`.
+      Verified with `npm run build` (clean) and `npm run lint` (no new
+      warnings); not click-tested in a live browser this session (no
+      browser automation tool available) — worth a manual double-search
+      check before the demo.
+- [x] **`create_api_key` 200-vs-400 — fixed 2026-09-10.** `routes_auth.py`
+      now imports `HTTPException` and raises `HTTPException(400, "role
+      must be one of admin, investigator, viewer")` for an invalid role
+      instead of returning `{"error": ...}` with HTTP 200. Regression
+      coverage added in `tests/test_auth.py`
+      (`test_invalid_role_raises_400`, `test_valid_role_creates_key`);
+      full suite re-run, 45/45 passed.
+- [x] **`search_by_attributes` truncation — fixed 2026-09-10.**
+      `routes_vehicle.py` now runs a `count()` query alongside the
+      limited fetch and returns `total_count`/`truncated: total_count >
+      200` in the response; switched ordering from oldest-first
+      (`asc()`) to newest-first (`desc()`) so a truncated response
+      surfaces the most recent matches rather than silently dropping
+      them. `SearchView.jsx` now shows "N of M total" and a truncation
+      notice when applicable. Regression coverage added in
+      `tests/test_vehicle_search.py`; full suite re-run, 47/47 passed.
+      `npm run build`/`npm run lint` both clean, no new warnings.
+- [x] **Gap-analysis PDF export — fixed 2026-09-10.** Added
+      `GET /cameras/gap-analysis/export.pdf` (`routes_cameras.py`),
+      reusing the same `_compute_gap_analysis` data as the existing JSON
+      endpoint (no second, independently-computed report) and rendering
+      via `reportlab` (added to `requirements.txt`, not previously a
+      dependency) — summary table, cameras-by-department breakdown, and
+      each gap category's camera-id list. Same department-scoping as the
+      JSON endpoint and the CSV export. `GapAnalysisPanel.jsx` got an
+      "Export PDF" button (`api.js`'s `downloadGapAnalysisPdf` — fetches
+      as a blob since the API key is a custom header, not a cookie, so a
+      plain `<a href>` can't authenticate). Regression coverage in
+      `tests/test_gap_analysis_pdf.py` (including a real bug caught by
+      the empty-department-breakdown test: `[header] + [rows] or
+      [fallback]`'s `or` never fires because concatenation is always
+      truthy — fixed with explicit parens before it shipped). A real
+      sample PDF was generated end-to-end against the live 30-camera
+      sandbox catalogue (not synthetic data) via a temporary,
+      immediately-revoked admin key and saved to
+      `docs/assets/sample_gap_analysis_report.pdf` for the submission.
+      Full backend suite re-run, 50/50 passed; `npm run
+      build`/`npm run lint` both clean.
+- [x] **Doc-honesty points — closed 2026-09-10.**
+      1. **Multi-vendor wording** — `docs/submission/EMAIL_DRAFT.md`
+         reworded: no longer implies proven integration with
+         VISWAS/NETRAM/TRINETRA, now explicit that this submission
+         demonstrates the architecture against the hackathon sandbox,
+         not a live connection to those systems.
+      2. **Private/commercial CCTV coverage** — added a paragraph to
+         `HLD.md`'s onboarding section: same onboarding flow as
+         departmental cameras, tagged by owning entity, contingent on
+         that entity's access grant; explicitly labeled design-only, not
+         built or demonstrated.
+      3. **External-DB integration honesty** — confirmed already closed,
+         `HLD.md`'s "query, don't copy" principle already states this
+         explicitly for VAHAN/SARTHI/eGujCop/CCTNS.
+      `MODULE_GAP_ANALYSIS.md`'s discussion points section updated to
+      mark all 3 resolved. Docs-only change, no code touched.
+- [x] **`CODEX_HANDOFF_PROMPT.md`'s ML-3 — run for real 2026-09-10, real
+      findings, threshold intentionally NOT changed.** New
+      `scripts/calibrate_embedding_threshold.py` run against the actual
+      accumulated `sentinel.db` (11,832 real crops). **Positive side
+      (recall): still genuinely blocked** — only 6 events have both a
+      crop and plate, 0 plates repeat across cameras, only 4 identity
+      links were ever plate-verified (not appearance-circular) — a
+      concrete number confirming the same conclusion this item already
+      had, not a new gap. **Negative side (false-positive rate): a real,
+      concerning finding** — 41.87% of 3,000 confirmed-different-vehicle
+      real crop pairs scored ≥ the current 0.80 threshold (median
+      negative-pair score 0.776, right at the threshold) —
+      `ColorHistogramEncoder` is a weak discriminator on this dataset.
+      **Deliberately did not raise the threshold**: doing so on
+      negative-only evidence with zero positive/recall data risks
+      silently breaking the system's actual documented differentiator
+      (cross-camera identity continuity without a plate read) — a
+      measured false-positive fix traded for an unmeasurable
+      false-negative regression isn't a net improvement (confirmed via
+      `advisor` before deciding). Cross-checked against the same day's
+      Model 1 gap-analysis work: the demo-lead camera (`cam06`) HAS GPS
+      set, so `identity.py`'s geo-feasibility gate is active and
+      compensating for the weak embedding on the actual headline demo
+      case; residual exposure is the ~8/30 cameras with no GPS at all,
+      where the weak embedding is the only gate. Full writeup + numbers
+      in `CODEX_HANDOFF_PROMPT.md`'s ML-3 section; `identity.py`'s
+      `EMBEDDING_SIMILARITY_THRESHOLD` comment updated to cite this,
+      not a guess. Full backend suite 55/55 passed (comment/script-only
+      change, no runtime behavior changed).
+- [x] **Per-character consensus voting in `tracker.py`'s
+      `consensus_plate()` — done 2026-09-10.** Replaced exact-string
+      majority vote with position-weighted character voting: `Track` now
+      keeps raw `plate_reads` (not pre-bucketed by exact string), reads
+      are grouped by length (position voting is only meaningful within
+      same length — a different-length read is either a different plate
+      or a dropped/added-character OCR miss, no edit-distance alignment
+      attempted, per this item's documented scope), the length-group with
+      the most total confidence wins, and the final plate/confidence come
+      from a per-position confidence-weighted vote (ties broken by
+      first-seen character, matching the old algorithm's tie-break).
+      Confidence is the weakest position's vote share, which — proven by
+      hand-deriving all 4 existing test cases before touching code —
+      reproduces the OLD algorithm's numbers exactly whenever all reads
+      share one length (all 4 pre-existing `test_consensus_plate_*` tests,
+      including the real cam06 regression test, pass unchanged with
+      identical confidence values). Two new tests added:
+      `test_consensus_plate_position_voting_recovers_read_exact_string_voting_would_fail`
+      (the actual documented gap: 5 reads with 5 DIFFERENT single-char
+      misreads at 5 different positions — old algorithm sees 5 equal-vote
+      candidates at 0.2 confidence each, rejected below
+      `PLATE_MIN_CONFIDENCE`; new algorithm recovers the correct plate at
+      0.8, clearing the gate) and
+      `test_consensus_plate_different_length_reads_grouped_separately`
+      (a dropped-character read doesn't get position-voted against
+      correct-length reads). Full suite 55/55 passed.
 
 ## P2 — known code issues, not yet fixed (lower demo-visibility risk)
+
+- [ ] **`tracker.py`'s `consensus_plate()` can synthesize a plate string
+      that matches no actual OCR read, if a track's `plate_reads` ever mix
+      two different vehicles' reads (an IOU-overlap association merging a
+      second car into an existing track — e.g. one vehicle leaving a
+      queued spot right as another pulls into the same bbox within
+      `TRACK_TIMEOUT_MS`).** Found and investigated by an independent
+      project review (2026-09-11); locked in as a real, passing regression
+      test
+      (`test_consensus_plate_can_synthesize_a_string_that_matches_no_actual_read`),
+      not left silently unflagged. **Two fix attempts were tried and both
+      reverted, on evidence**: a post-hoc confidence penalty in
+      `consensus_plate()`, and a plate-agreement guard at association time
+      in `CameraTracker.update()` — both broke
+      `test_consensus_plate_isolates_higher_vote_share`/
+      `test_consensus_plate_confidence_is_vote_share_not_count`, which
+      correctly require a severely-disagreeing single stray misread of the
+      SAME vehicle to be outvoted, not treated as contamination; there is
+      no character-agreement threshold that separates that already-
+      required case from genuine two-vehicle contamination. A real fix
+      needs signal outside the plate string itself (e.g. an appearance-
+      embedding distance check between a candidate track's stored crop and
+      a new detection's crop before merging — a genuine `reid.py`-into-
+      `tracker.py` integration), not a small change — not attempted.
+      (`analytics/tracker.py`)
 
 - [ ] **RTSP discontinuity detection doesn't survive a reconnect** —
       `last_pts_ms` resets to `None` on every reconnect, so a scene-loop
@@ -140,12 +360,210 @@ item.
 ~~Department-scoped RBAC~~ — **done 2026-09-05** (`api/auth.py`'s `department_scope`).
 - [ ] WHEP low-latency preview (HLS-via-proxy is the working path; low
       priority — not required by the test case).
-- [ ] Backend search/filter query params on `/cameras` (currently
-      client-side only in the frontend).
-- [ ] Coverage-radius/zone GIS map layer, ageing-infrastructure tracking
-      (install-date field).
-- [ ] Camera-onboarding audit trail (who onboarded/edited which camera —
-      `AuditLog` currently only covers vehicle-search purpose/case_id).
+- [x] **Backend search/filter query params on `/cameras` — done
+      2026-09-10.** Added `department`/`camera_type`/`is_healthy`/`live`
+      (exact match) and `q` (case-insensitive substring on id/location)
+      as optional query params on `GET /cameras`; applied after
+      department-scoping so a non-admin key still can't see outside its
+      own scope. No existing client-side camera-filter UI was found to
+      migrate (the frontend rebuild appears to have dropped it, same as
+      the old `VehicleSearch.jsx`) — left as a backend capability with
+      regression coverage (`test_camera_registry_model1.py`), not wired
+      to a new frontend surface, to avoid inventing UI beyond what was
+      asked.
+- [x] **Coverage-radius/zone GIS map layer, ageing-infrastructure
+      tracking — done 2026-09-10.** Added `CameraRegistry.install_date`/
+      `coverage_radius_m` (additive migration in `db/session.py`), wired
+      into `CameraOnboard`/`_apply_onboard_fields`/`_merged_camera_view`/
+      CSV export/`OnboardCameraForm.jsx`. `MapView.jsx` renders a
+      coverage-radius `Circle` per camera with a radius set, and a
+      dashed marker outline + popup note for cameras installed more than
+      `SENTINEL_CAMERA_AGEING_THRESHOLD_YEARS` (config.py, default 5)
+      ago. Gap-analysis JSON/PDF/`GapAnalysisPanel.jsx` all report
+      `ageing`/`missing_install_date` alongside the existing categories.
+- [x] **Camera-onboarding audit trail — done 2026-09-10.** New
+      `CameraAuditLog` table (separate from the existing purpose-bound
+      `AuditLog`, which doesn't fit a registry edit) records `onboarded`
+      vs. `updated` per camera per onboard/bulk-onboard call, with
+      `user_id`/`created_at`. New admin-only `GET
+      /cameras/{camera_id}/audit-log`. Regression test caught a real
+      ordering bug: two edits in the same test can share an identical
+      `created_at` (default's resolution can tie), making `ORDER BY
+      created_at DESC` nondeterministic — fixed with an `id DESC`
+      tiebreak; confirmed deterministic across 5 repeated full-suite runs
+      after the fix.
+
+All three verified: real additive migration run against the actual
+accumulated `sentinel.db` (not a fresh DB) — both new columns and the new
+table created cleanly, no data loss. Full backend suite 53/53 passed;
+`npm run build`/`npm run lint` both clean, no new warnings.
+
+- [x] **Real ONVIF device discovery — built.** `streaming/onvif_discovery.py`:
+      WS-Discovery (UDP multicast Probe/ProbeMatch) + ONVIF Media SOAP
+      calls (`GetCapabilities` → `GetProfiles` → `GetStreamUri`), raw
+      hand-built SOAP/XML rather than a zeep-based client (small enough
+      protocol surface to avoid the heavier WSDL-parsing dependency).
+      Wired into `catalogue.py`'s `CatalogueClient.refresh()` as
+      ONVIF-first: tried on every refresh when `SENTINEL_ONVIF_ENABLED=true`
+      (default `false`), falling back to the existing sandbox HTTP
+      catalogue automatically and loudly-logged when no ONVIF device
+      responds — the sandbox's actual, permanent state (§13a: plain RTSP,
+      no ONVIF endpoint at all), so this is the expected fallback path,
+      not an error condition. XML parsing uses `defusedxml` (new dep) to
+      guard against XXE from untrusted device responses, per this repo's
+      untrusted-input rule. 14 new regression tests
+      (`tests/test_onvif_discovery.py`, mocked WS-Discovery/SOAP
+      exchanges — no live ONVIF device is reachable from this environment
+      or the sandbox to test against for real); full backend suite 84/84
+      passing (70 pre-existing + 14 new), run for real in a freshly
+      created `.venv` (none existed in this environment beforehand).
+      **Honestly unverified against a live ONVIF-conformant camera** —
+      that remains the one open gap before this could be trusted in an
+      actual departmental deployment; see
+      `docs/models/model-2-unified-viewing/IMPLEMENTATION_PLAN.md`'s M2-4.
+
+- [x] **Minor hardening batch — done 2026-09-11.** `/health` now reports
+      `active_camera_worker_count` (an int) instead of the raw camera-ID
+      list to an unauthenticated caller; `VehicleEvent` gained a separate
+      `ingested_at` column alongside `observed_at` (additive migration,
+      verified against a real on-disk pre-migration DB, not just a fresh
+      one); a minimal in-process rate limiter (`api/rate_limit.py`, fixed-
+      window per API key/IP, no new infrastructure) now guards every route
+      except `/health` and `/live/*`; `architecture.drawio` updated to
+      include the Model 3 federation layer and ONVIF discovery (previously
+      absent — stale relative to the actual codebase). 5 new tests
+      (`test_rate_limit.py`); full backend suite 100/100 passing.
+
+## 2026-09-12 — evidence classification audit + demo readiness (done)
+
+**Truthful state of the evidence feature, stated explicitly per the audit
+below (do not claim more than this anywhere — deck, briefing, or demo
+script):**
+
+```
+Evidence classification:        IMPLEMENTED
+LEAD_ONLY UI export blocking:   IMPLEMENTED
+§63 evidence-package generation: NOT IMPLEMENTED
+```
+
+`evidence_class.py` audited line-by-line. One real gap found and fixed: a
+whitespace-only plate string is truthy in Python, so `classify("   ", ...)`
+returned CONFIRMED before this fix. Unreachable through the real pipeline
+today (`anpr.py`'s `PLATE_PATTERN.fullmatch()` already rejects it), but the
+function is the single gate deciding exportability and must not depend on
+that upstream invariant holding forever — hardened to `plate and
+plate.strip()`. 5 new boundary tests (17 total for this module), including
+one that locks the classifier's signature to `(plate, link_method)` only —
+structural proof a high fused UI score can never influence the class,
+because the function cannot see it.
+
+### Rule table (deterministic, exhaustive over all 4 real `link_method` values)
+
+| plate | link_method | class | rationale |
+|---|---|---|---|
+| any non-blank string | any | CONFIRMED | plate already passed `PLATE_PATTERN` + `PLATE_MIN_CONFIDENCE` upstream |
+| None / empty / whitespace | `plate_continuation` | PROBABLE | same within-camera track as a sighting that read the plate |
+| None / empty / whitespace | `plate_upgrade` | PROBABLE | same, retroactive upgrade case |
+| None / empty / whitespace | `appearance_match` | LEAD_ONLY | appearance embedding only — 41.87% FPR measured |
+| None / empty / whitespace | `new_identity` | LEAD_ONLY | no plate, no link — anonymous |
+| None / empty / whitespace | unrecognised/None | LEAD_ONLY | fail conservative — never upgrade on an unknown case |
+
+Only `CONFIRMED` is in `EXPORTABLE_CLASSES`. `PROBABLE` is deliberately
+excluded too.
+
+## 2026-09-12 — jury-ready UI rework + evidence tiering (done)
+
+**Evidence classification is now real and enforced** (`analytics/evidence_class.py`).
+Derived from persisted provenance — `plate` and `link_method` — so it needs no
+migration and a badge can never disagree with the row it labels:
+
+- `CONFIRMED` — this sighting read and validated its own plate.
+- `PROBABLE` — no plate here, but linked by within-camera track continuity
+  from a sighting that did read one (`plate_continuation` / `plate_upgrade`).
+- `LEAD_ONLY` — linked by appearance only, or standalone anonymous. Not evidence.
+
+Only `CONFIRMED` is exportable. `PROBABLE` is deliberately excluded too: an
+export is where a hedge stops being visible. `/vehicle/{plate}/history` and
+`/vehicle/recent` now return `evidence_class`, `evidence_class_reason` and
+`exportable_as_evidence`; the frontend disables its export control from that
+field rather than re-deriving the rule. 12 new tests.
+
+**Measured over the real database:** 6 CONFIRMED, 12,251 LEAD_ONLY out of
+12,257 events — an independent reproduction of DECISION_REVIEW_2026-09-11.md's
+central finding. Identity `GJ01AB1234` shows the demo shape exactly: five
+sightings, one CONFIRMED (cam03, where the plate was read), four leads.
+
+**Navigation regrouped** by operator intent (Operations / Investigations /
+Camera Intelligence / Evidence / Integrations / System) instead of leaking our
+internal Model 1/2/3 structure into the product.
+
+**New screens, all real-endpoint backed:** Camera Health (operational state
+only — no fabricated packet-loss/latency/uptime figures, because nothing
+measures them), Coverage & Gaps, Connected Systems (states plainly that
+department labels behind one gateway are *not* two systems — CLAUDE.md §10),
+Watchlist & Alerts combined, User Administration (`/auth/api-keys`, minted key
+shown once).
+
+**Three destinations ship an honest "not yet implemented" screen** naming the
+exact backend work required, rather than being hidden or faked: Investigation
+Cases, ANPR Readiness, Evidence Export (§63). Wording throughout is
+"§63-oriented", never "court admissible".
+
+Verified: 119/119 backend tests, `npm run lint` (no new warnings), `npm run
+build` clean, and every new endpoint exercised over real HTTP against a running
+`app.main` with the real `sentinel.db`.
+
+### Government-feed readiness, checked 2026-09-12
+
+| Item | State |
+|---|---|
+| Sandbox catalogue access | **PASS** — 30 cameras, HLS + RTSP URLs present |
+| HLS playback | **PASS** — cam06 playlist 200, valid `#EXTM3U`, 14,690 segments |
+| Searchable event / movement history | **PASS** — verified over HTTP |
+| Persisted camera ID + timestamp | **PASS** |
+| Watchlist correlation + alerts | **PASS** |
+| Timestamped output report | **PASS** — gap-analysis and federation PDFs |
+| Real ANPR output | **PASS (historic)** — `data/anpr_scan/20260905T112430Z`, 7 reads |
+| GIS mapping | **PARTIAL** — 22 of 30 cameras have coordinates; the sandbox
+  catalogue supplies none, they come from our registry |
+| RTSP analytics producing new events | **PARTIAL** — venv rebuilt to Python
+  3.11 (was 3.12, which had no `cp312` wheel for the pinned `onnx==1.14.1`
+  and would have needed a `cmake` source build). ML deps installing;
+  real-model verification proceeding on a second machine |
+| Full government-feed demo session | **RETRACTED "externally blocked"
+  status — see below** |
+
+### Government-feed blocker retraction, 2026-09-12
+
+**The prior "externally blocked" status was stale and imprecise.** It traced
+to one undated 2026-09-05 remark — "the hackathon's own sandbox is still
+being fixed on their end" — with no named endpoint, no error, and no
+re-check in a week. This session verified directly against the live sandbox
+today: catalogue login succeeds, 30 cameras returned, and `cam06`'s HLS
+playlist returns 200 with a valid `#EXTM3U` header and 14,690 segments. The
+premise of the blocker does not hold today.
+
+**Separately, and more importantly: `HACKATHON_DETAILS.md` §12 states the
+sandbox itself already qualifies as "Government-Provided CCTV Feed."**
+Verbatim: *"~12 hours of CCTV footage from each of 30+ cameras, across 5
+departments: Health, Police, GSRTC, Panchayat, Municipal Corporation... Real
+footage, no synthetic data... served as simulated live video."* §"Phase 1 –
+Sandbox Round" vs "Phase 2 – Production Round" confirms this sandbox is the
+intended Phase 1 government feed; a separate production environment exists
+only for the 6 Grand Finale qualifiers. The project's own prior framing — a
+second, distinct "government feed" recording session, gated on the
+organizers — was a misreading of the spec, not a real technical blocker.
+
+**One genuine, narrow gap found and fixed:** Q33 requires "output report
+showing detected vehicles/plates with timestamps"; no such export existed
+(`ReportsView.jsx` had gap-analysis, audit-log, and watchlist reports only).
+Added a "Vehicle detections report" entry reusing the existing
+`/vehicle/recent` endpoint and `download()` pattern — zero new backend code.
+
+**Status: READY NOW** for everything except a fresh live-ML detection
+moment, which depends on the ML runtime (being verified on a second
+machine, see above) rather than on any organizer dependency.
+
 
 ## Deliberately not doing (see STRATEGY.md's OUT list — don't silently build these)
 

@@ -97,6 +97,18 @@ class CameraRegistry(Base):
     # detection disabled for this camera (no ground truth to compare against).
     expected_direction_deg = Column(Float, nullable=True)
 
+    # Ageing-infrastructure tracking (Model 1 deliverable, found missing in
+    # MODULE_GAP_ANALYSIS.md 2026-09-05 — "no install-date field"). Nullable:
+    # the catalogue/onboarding source has no install-date of its own, so this
+    # is only ever populated when a human enters it (manual onboarding form
+    # or a bulk-edit), same honesty stance as camera_type above.
+    install_date = Column(DateTime, nullable=True)
+    # GIS map coverage-radius layer (Model 1 deliverable — "Coverage-radius/
+    # zone GIS map layer" was point-markers-only before this). Metres,
+    # nullable: an un-set radius means "unknown," not "zero coverage" — the
+    # map renders no circle for it rather than a misleading dot-sized one.
+    coverage_radius_m = Column(Float, nullable=True)
+
 
 class VehicleEvent(Base):
     """One sighting of a vehicle at a camera/time — the raw material for
@@ -117,6 +129,12 @@ class VehicleEvent(Base):
     camera_id = Column(String, ForeignKey("camera_registry.id"), nullable=False)
     pts_ms = Column(Float, nullable=False)  # stream-relative PTS, not wall clock
     observed_at = Column(DateTime, default=dt.datetime.utcnow)  # wall clock for display only
+    # Separate from observed_at so a future queued/batched ingestion path
+    # (SCALABILITY.md's regional event bus) can tell "seen at" apart from
+    # "landed in this DB" — the two coincide today (row is written
+    # immediately after resolution) but the column already exists for when
+    # they don't. Matches FederatedEvent's observed_at/ingested_at split.
+    ingested_at = Column(DateTime, default=dt.datetime.utcnow)
     confidence = Column(Float, nullable=True)  # detector confidence
 
     vehicle_type = Column(String, nullable=True)  # car / truck / bus / motorcycle
@@ -191,6 +209,46 @@ class AuditLog(Base):
     case_id = Column(String, nullable=True)
     query = Column(String, nullable=False)  # e.g. the plate searched
     created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class CameraAuditLog(Base):
+    """Model 1's registry deliverable includes an audit trail — the
+    existing `AuditLog` is purpose-bound investigative *queries*
+    (vehicle-search), a different concept from "who onboarded/edited which
+    camera's metadata." Found missing entirely in TASKS.md's P3 list
+    (2026-09-05). Separate table rather than overloading AuditLog's
+    purpose/case_id columns, which don't apply to a registry edit."""
+
+    __tablename__ = "camera_audit_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    camera_id = Column(String, nullable=False, index=True)
+    user_id = Column(String, nullable=False)
+    action = Column(String, nullable=False)  # "onboarded" | "updated"
+    created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class FederatedEvent(Base):
+    """Model 3: normalized landing zone for events pulled from any
+    `VMSAdapter` (see analytics/federation.py) — the "metadata exchange
+    bus" deliverable, implemented as a polled table rather than Kafka/
+    RabbitMQ (deliberate pilot-scale decision, see
+    docs/models/model-3-vms-federation/RESEARCH.md). `source_system`
+    distinguishes Sentinel's own real data ("sentinel") from the real,
+    independent NYC Open Data public dataset ("nyc_open_data") used as
+    Model 3's second federated source — NOT a second Gujarat departmental
+    VMS, see federation.py's module docstring for the honesty caveat.
+    """
+
+    __tablename__ = "federated_event"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source_system = Column(String, nullable=False, index=True)
+    plate = Column(String, nullable=False, index=True)
+    observed_at = Column(DateTime, nullable=False)
+    camera_id = Column(String, nullable=False)
+    raw_payload_json = Column(String, nullable=True)
+    ingested_at = Column(DateTime, default=dt.datetime.utcnow)
 
 
 class ApiKeyEntry(Base):

@@ -38,6 +38,55 @@ fits the time available, don't feel obliged to do all of them.
 
 ## Task 1 — Empirically justify the Re-ID similarity threshold (ML-3)
 
+**Update 2026-09-10 — run for real, real findings, threshold NOT
+changed.** `scripts/calibrate_embedding_threshold.py` was written and run
+against the actual accumulated `sentinel.db` (11,832 real crops from
+continuous live-pipeline operation, not the synthetic demo route):
+
+- **Positive side (recall) — still genuinely blocked, now with a concrete
+  number.** Only 6 `VehicleEvent` rows have both a crop and a plate; 0
+  distinct plates repeat across ≥2 sightings; only 4 rows total were ever
+  linked via `plate_continuation`/`plate_upgrade` (the only
+  appearance-independent ground truth this system has). Using
+  `link_method="appearance_match"`-derived identity groups as "positives"
+  would be circular — it would just re-validate whatever threshold was
+  already in effect when identity resolution ran the first time, not
+  measure the signal independently. **This is a genuine data-scarcity
+  finding, not a script limitation** — the fix is still the controlled
+  real-world capture this task already recommended (one vehicle driven
+  past 2+ real sandbox cameras), not more mining of the existing DB.
+- **Negative side (false-positive rate) — real, concerning finding.**
+  3,000 confirmed-different-vehicle crop pairs (different `identity_id`
+  and, where known, different plate) scored mean=0.748, median=0.776,
+  p95=0.922, p99=0.952. **41.87% of confirmed-different-vehicle pairs
+  score ≥ the current 0.80 threshold** — `ColorHistogramEncoder`'s 48-dim
+  HSV-histogram + grayscale-template vector is weak at discriminating
+  vehicles in this dataset (median negative-pair score sits almost
+  exactly at the threshold).
+- **Why the threshold was NOT changed despite this finding:** raising it
+  on negative-side evidence alone, with zero positive-side/recall data,
+  risks silently breaking this system's actual documented differentiator
+  (cross-camera identity continuity when the plate can't be read) —
+  trading a *measured* false-positive risk for an *unmeasured* (and
+  unmeasurable from this data) false-negative one is not a net
+  improvement. The existing geo-feasibility gate in `identity.py`
+  (added for exactly this drift problem, see its own docstring) is doing
+  real compensating work when GPS is present — cross-checked against the
+  Model 1 gap-analysis work done the same day: the actual demo-lead
+  camera (`cam06`) HAS GPS set, so the geo gate is active for the
+  headline demo case. The residual exposure is real but bounded: ~8 of
+  30 registered cameras currently have no GPS coordinates at all (see
+  `GET /cameras/gap-analysis`'s `missing_gis_coordinates`), and for those
+  specific cameras the appearance threshold alone — empirically weak per
+  the finding above — is the only gate against a cross-camera identity
+  merge.
+- **Recommendation, unchanged from before, now better-evidenced:** don't
+  hand-tune this constant further without real same-vehicle pairs. If the
+  controlled real-footage capture happens, re-run
+  `calibrate_embedding_threshold.py` with real positive data and pick a
+  threshold off the resulting ROC, not off the negative distribution
+  alone.
+
 **File:** `sentinel-solution/backend/app/analytics/identity.py`,
 `EMBEDDING_SIMILARITY_THRESHOLD = 0.80`.
 

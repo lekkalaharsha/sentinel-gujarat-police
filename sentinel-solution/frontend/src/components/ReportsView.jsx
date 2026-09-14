@@ -14,6 +14,12 @@ function download(filename, data) {
 }
 
 const REPORTS = [
+  // Satisfies HACKATHON_DETAILS.md deliverable #4 / Q33's literal requirement
+  // ("output report showing detected vehicles/plates with timestamps") —
+  // reuses /vehicle/recent, which already carries every field asked for
+  // (camera_id, observed_at, plate, plate_confidence, evidence_class); no
+  // new backend endpoint, same download() pattern as the reports below.
+  { name: "Vehicle detections report", desc: "Detected vehicles/plates with camera, timestamp and evidence class", fetch: () => api.recentDetections(200), file: "vehicle-detections.json" },
   { name: "Camera gap-analysis report", desc: "Model 1 deliverable — registry coverage, health, missing metadata", fetch: () => api.gapAnalysis(), file: "gap-analysis.json" },
   { name: "Audit log (last 500 queries)", desc: "Every purpose-bound vehicle lookup, who ran it, and why", fetch: () => api.auditLog(500), file: "audit-log.json" },
   { name: "Watchlist snapshot", desc: "Current active watchlist entries", fetch: () => api.listWatchlist(), file: "watchlist.json" },

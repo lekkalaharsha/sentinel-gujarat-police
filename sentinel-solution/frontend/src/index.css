@@ -35,6 +35,8 @@
   --danger-bg: rgba(239, 68, 68, 0.12);
   --ok: #22c55e;
   --warn: #f59e0b;
+  --warn-bg: rgba(245, 158, 11, 0.12);
+  --bg-sunken: rgba(0, 0, 0, 0.25);
 
   --mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
 
@@ -131,4 +133,31 @@ a {
 }
 .state-badge--predicted::before {
   background: var(--predicted);
+}
+
+/* Added for the operational-nav rework: a form input matching .btn2's
+   surface, a "not built yet" nav tag, and a disabled-button treatment that
+   reads as deliberately unavailable rather than broken — the LEAD ONLY
+   export control depends on that distinction being legible. */
+.input2 {
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 8px 10px;
+  width: 100%;
+}
+.input2:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.core-tag.pending-tag {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+.btn2:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }

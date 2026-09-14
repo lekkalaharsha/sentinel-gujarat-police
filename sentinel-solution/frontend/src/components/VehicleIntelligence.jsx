@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "../api";
 import VehicleTimeline from "./VehicleTimeline";
 import ExplainabilityPanel from "./ExplainabilityPanel";
@@ -13,6 +13,8 @@ export default function VehicleIntelligence({ initialPlate, onResult, onOpenGrap
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [exportTarget, setExportTarget] = useState(null);
+  const abortRef = useRef(null);
 
   async function submit(e) {
     e.preventDefault();
@@ -20,18 +22,23 @@ export default function VehicleIntelligence({ initialPlate, onResult, onOpenGrap
       setError("plate and purpose are required — every query is audit-logged against your API key.");
       return;
     }
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
     setError(null);
     try {
-      const data = await api.vehicleHistory(plate.trim(), purpose.trim(), caseId.trim() || undefined);
+      const data = await api.vehicleHistory(plate.trim(), purpose.trim(), caseId.trim() || undefined, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       setResult(data);
       setSelectedIndex(data.sightings?.length ? data.sightings.length - 1 : null);
       onResult?.(data);
     } catch (err) {
+      if (controller.signal.aborted) return;
       setError(err.message);
       setResult(null);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }
 
@@ -42,8 +49,11 @@ export default function VehicleIntelligence({ initialPlate, onResult, onOpenGrap
     <>
       <div className="view-head2">
         <div>
-          <h1>Vehicle Intelligence</h1>
-          <div className="sub">Complete cross-camera movement history — the core evaluation ask</div>
+          <h1>Vehicle Search</h1>
+          <div className="sub">
+            Purpose-bound movement history. Each sighting carries its evidence tier and the
+            reason it was linked — only CONFIRMED sightings can be exported as evidence.
+          </div>
         </div>
         {result?.plate && (
           <div className="view-actions">
@@ -71,7 +81,13 @@ export default function VehicleIntelligence({ initialPlate, onResult, onOpenGrap
             <div className="card2">
               <div className="card-h2"><h2>Journey reconstruction</h2><span className="n">{result.sightings.length} sighting(s)</span></div>
               {result.note && <p style={{ color: "var(--text-dim)", fontSize: 11.5 }}>{result.note}</p>}
-              <VehicleTimeline sightings={result.sightings} routeSegments={result.route_segments} selectedIndex={selectedIndex} onSelect={setSelectedIndex} />
+              <VehicleTimeline
+                sightings={result.sightings}
+                routeSegments={result.route_segments}
+                selectedIndex={selectedIndex}
+                onSelect={setSelectedIndex}
+                onExport={setExportTarget}
+              />
             </div>
           )}
         </div>
@@ -101,6 +117,35 @@ export default function VehicleIntelligence({ initialPlate, onResult, onOpenGrap
           )}
         </div>
       </div>
+      {exportTarget && (
+        <div className="card2" style={{ borderColor: "var(--confirmed)" }}>
+          <div className="card-h2">
+            <h2>Evidence package — {exportTarget.camera_id}</h2>
+            <span className="state-badge" style={{ color: "var(--confirmed)", background: "var(--confirmed-bg)" }}>
+              CONFIRMED
+            </span>
+          </div>
+          <p style={{ fontSize: 12.5, lineHeight: 1.6 }}>
+            Sighting at <strong>{exportTarget.camera_id}</strong>
+            {exportTarget.location ? ` (${exportTarget.location})` : ""} on{" "}
+            {new Date(exportTarget.observed_at).toLocaleString()}, plate read at{" "}
+            {Math.round((exportTarget.plate_confidence || 0) * 100)}% consensus confidence.
+          </p>
+          <p style={{ fontSize: 11.5, color: "var(--text-dim)", lineHeight: 1.6 }}>
+            A §63-oriented evidence package is not yet implemented: evidence crops are stored
+            without a write-time SHA-256 hash and events are not stamped with the model and
+            software versions that produced them, so a package generated now could not carry the
+            provenance Section 63 of the Bharatiya Sakshya Adhiniyam expects. This sighting is
+            eligible for export once that path exists.
+          </p>
+          <p style={{ fontSize: 11, color: "var(--text-dim)", fontStyle: "italic", lineHeight: 1.6 }}>
+            Designed to support evidence preparation under Section 63 of the Bharatiya Sakshya
+            Adhiniyam. Final evidentiary use requires authorized review and applicable legal
+            procedure.
+          </p>
+          <button className="btn2" onClick={() => setExportTarget(null)}>Close</button>
+        </div>
+      )}
     </>
   );
 }
