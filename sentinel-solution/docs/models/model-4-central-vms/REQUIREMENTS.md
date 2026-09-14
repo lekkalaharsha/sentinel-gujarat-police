@@ -1,5 +1,17 @@
 # Model 4 — Requirements Coverage
 
+## Scoped pilot capability slice (2026-09-13)
+
+This does not change Model 4's statewide roadmap status. The following are
+small pilot capabilities, not deployed statewide infrastructure:
+
+| Capability | Evidence status | Boundary |
+|---|---|---|
+| Sampled-frame vehicle/person counts | **AUTOMATED-TEST VERIFIED** | `CameraDensityWindow` and `GET /admin/density`; raw detector counts, not unique persons or crowd-size estimates |
+| Hot/warm/cold metadata | **IMPLEMENTED, UNVERIFIED** | `VehicleEvent.storage_tier` and dynamic age classification; no S3/Ceph/object storage |
+| Central pilot rollup | **AUTOMATED-TEST VERIFIED** | `GET /admin/central-rollup` reads existing pilot DB data; not a statewide deployment |
+| Pilot DR runbook | **IMPLEMENTED, UNVERIFIED** | SQLite backup/restore procedure in `DR_RUNBOOK.md`; multi-region failover remains a DESIGN TARGET |
+
 Every bullet below is copied from the official challenge problem
 statement's Model 4 section (`docs/hackathon/HACKATHON_DETAILS.md` §7,
 plus Q20–Q22). **Model 4 is design/roadmap-only and will not be built

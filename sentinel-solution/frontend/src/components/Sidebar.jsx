@@ -1,6 +1,6 @@
 import {
   IconGrid, IconMap, IconGraph, IconCar, IconCamera, IconAlert, IconEye,
-  IconSearch, IconFolder, IconEvidence, IconReport, IconPulse, IconLayers,
+  IconFolder, IconEvidence, IconReport, IconPulse, IconLayers,
   IconSettings, IconShield,
 } from "../icons";
 
@@ -15,15 +15,13 @@ import {
 const NAV = [
   { group: "Operations", items: [
     { id: "command", label: "Command Centre", icon: IconGrid },
-    { id: "camera", label: "Live Monitoring", icon: IconCamera },
-    { id: "grid", label: "Video Wall", icon: IconLayers },
     { id: "livemap", label: "State Map", icon: IconMap },
+    { id: "livenetwork", label: "Live Network", icon: IconCamera },
   ]},
   { group: "Investigations", items: [
     { id: "vehicle", label: "Vehicle Search", icon: IconCar },
     { id: "graph", label: "Observation Trail", icon: IconGraph, core: true },
     { id: "monitoring", label: "Watchlist & Alerts", icon: IconAlert },
-    { id: "search", label: "Attribute Search", icon: IconSearch },
     { id: "cases", label: "Investigation Cases", icon: IconFolder, pending: true },
   ]},
   { group: "Camera Intelligence", items: [
@@ -39,6 +37,14 @@ const NAV = [
   { group: "Integrations", items: [
     { id: "systems", label: "Connected Systems", icon: IconLayers },
     { id: "federation", label: "Integration Monitor", icon: IconGraph },
+  ]},
+  { group: "Statewide Operations", items: [
+    { id: "statewide", label: "Statewide Overview", icon: IconMap },
+    { id: "statewide-central", label: "Central Monitoring", icon: IconCamera },
+    { id: "statewide-infra", label: "Infrastructure & Scale", icon: IconLayers },
+    { id: "statewide-storage", label: "Storage & Retention", icon: IconReport },
+    { id: "statewide-dr", label: "Resilience & DR", icon: IconShield },
+    { id: "statewide-readiness", label: "Statewide Readiness", icon: IconGraph },
   ]},
   { group: "System", items: [
     { id: "audit", label: "Audit & Governance", icon: IconShield },

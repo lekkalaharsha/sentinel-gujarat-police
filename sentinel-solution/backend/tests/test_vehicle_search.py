@@ -58,3 +58,25 @@ def test_truncation_signalled_and_returns_most_recent(session):
     assert observed_ats == sorted(observed_ats, reverse=True)
     newest_expected = (dt.datetime(2026, 1, 1) + dt.timedelta(minutes=209)).isoformat()
     assert result["matches"][0]["observed_at"] == newest_expected
+
+
+def test_attribute_results_include_backend_evidence_class(session):
+    camera = CameraRegistry(id="cam-tier")
+    identity = VehicleIdentity(plate="GJ01AB1234")
+    session.add_all([camera, identity])
+    session.commit()
+    session.add_all([
+        VehicleEvent(identity_id=identity.id, camera_id=camera.id, pts_ms=1,
+                     observed_at=dt.datetime(2026, 1, 1), plate="GJ01AB1234", vehicle_type="car"),
+        VehicleEvent(identity_id=identity.id, camera_id=camera.id, pts_ms=2,
+                     observed_at=dt.datetime(2026, 1, 1, 0, 1), vehicle_type="car",
+                     link_method="appearance_match"),
+    ])
+    session.commit()
+    investigator = Principal("inv1", "investigator", None)
+    result = search_by_attributes(purpose="stolen_vehicle_investigation", vehicle_type="car",
+                                  color=None, partial_plate=None, case_id=None,
+                                  db=session, principal=investigator)
+    by_tier = {match["evidence_class"]: match for match in result["matches"]}
+    assert by_tier["CONFIRMED"]["evidence_class_reason"] == "Plate read and validated at this camera."
+    assert by_tier["LEAD_ONLY"]["evidence_class_reason"].startswith("No plate read at this camera. Linked by appearance")

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import sessionmaker
 
 from .. import config
@@ -14,6 +14,20 @@ engine = create_engine(
     config.DATABASE_URL,
     connect_args={"check_same_thread": False} if config.DATABASE_URL.startswith("sqlite") else {},
 )
+
+
+def _configure_sqlite_connection(dbapi_connection, _connection_record) -> None:
+    """Bounded writer contention for the pilot's concurrent camera workers."""
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA journal_mode=WAL")
+    finally:
+        cursor.close()
+
+
+if config.DATABASE_URL.startswith("sqlite"):
+    event.listen(engine, "connect", _configure_sqlite_connection)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 # Columns added after the initial schema shipped. `create_all` only creates
@@ -40,6 +54,13 @@ _ADDITIVE_MIGRATIONS = [
     ("camera_registry", "install_date", "DATETIME"),
     ("camera_registry", "coverage_radius_m", "FLOAT"),
     ("vehicle_event", "ingested_at", "DATETIME"),
+    ("vehicle_event", "storage_tier", "VARCHAR"),
+    ("alert", "evidence_class", "VARCHAR"),
+    ("alert", "evidence_class_reason", "VARCHAR"),
+    ("camera_registry", "analytics_degraded", "BOOLEAN"),
+    ("camera_registry", "last_analytics_success_at", "DATETIME"),
+    ("camera_registry", "source_system", "VARCHAR"),
+    ("camera_registry", "snapshot_image_url", "VARCHAR"),
 ]
 
 
@@ -79,12 +100,78 @@ def _ensure_vehicle_identity_plate_unique(existing_tables: set) -> None:
             "WHERE plate IS NOT NULL GROUP BY plate HAVING COUNT(*) > 1"
         )).fetchall()
         for plate, keep_id in dupes:
-            dup_ids = [row[0] for row in conn.execute(
-                text("SELECT id FROM vehicle_identity WHERE plate = :plate AND id != :keep_id"),
-                {"plate": plate, "keep_id": keep_id},
-            ).fetchall()]
+            identity_columns = (
+                "plate_confidence", "embedding_json", "first_seen_at", "last_seen_at", "last_camera_id"
+            )
+            select_columns = ", ".join(("id",) + identity_columns)
+            identities = conn.execute(
+                text(f"SELECT {select_columns} FROM vehicle_identity WHERE plate = :plate ORDER BY id"),
+                {"plate": plate},
+            ).mappings().all()
+            keeper = next(row for row in identities if row["id"] == keep_id)
+            duplicates = [row for row in identities if row["id"] != keep_id]
+            dup_ids = [row["id"] for row in duplicates]
             if not dup_ids:
                 continue
+
+            # This runs against accumulated databases, not just a clean
+            # install.  Preserve any richer non-null data that happened to
+            # land on a duplicate row.  Where two rows disagree, keep the
+            # deterministic MIN(id) keeper but make the discarded value loud
+            # in the startup log rather than silently losing it.
+            #
+            # first_seen_at/last_seen_at are NOT arbitrary fields with an
+            # ambiguous "right" value like embedding_json — they always have
+            # a genuinely correct merged value (MIN and MAX respectively
+            # across every duplicate), and both columns default to
+            # utcnow() so they are essentially always non-null. A generic
+            # "keep the keeper's value if non-null, else absorb" rule would
+            # never fire for them and would silently leave the keeper's
+            # (earliest-created, MIN id) possibly-stale last_seen_at in
+            # place even when a duplicate proves the vehicle was seen much
+            # more recently. last_camera_id travels with last_seen_at: it
+            # should name the camera that produced whichever row is
+            # actually the most recent sighting, not be absorbed
+            # independently of that.
+            all_rows = [keeper] + duplicates
+            merged_first_seen_at = min(
+                (row["first_seen_at"] for row in all_rows if row["first_seen_at"] is not None), default=None
+            )
+            most_recent_row = max(
+                (row for row in all_rows if row["last_seen_at"] is not None),
+                key=lambda row: row["last_seen_at"],
+                default=None,
+            )
+
+            absorbed: dict[str, object] = {}
+            if merged_first_seen_at is not None and merged_first_seen_at != keeper["first_seen_at"]:
+                absorbed["first_seen_at"] = merged_first_seen_at
+            if most_recent_row is not None and most_recent_row["last_seen_at"] != keeper["last_seen_at"]:
+                absorbed["last_seen_at"] = most_recent_row["last_seen_at"]
+                if most_recent_row["last_camera_id"] is not None:
+                    absorbed["last_camera_id"] = most_recent_row["last_camera_id"]
+
+            remaining_columns = tuple(
+                c for c in identity_columns if c not in ("first_seen_at", "last_seen_at", "last_camera_id")
+            )
+            for duplicate in duplicates:
+                for column in remaining_columns:
+                    keep_value = absorbed.get(column, keeper[column])
+                    duplicate_value = duplicate[column]
+                    if keep_value is None and duplicate_value is not None:
+                        absorbed[column] = duplicate_value
+                    elif keep_value is not None and duplicate_value is not None and keep_value != duplicate_value:
+                        logger.warning(
+                            "duplicate vehicle_identity merge conflict for plate %s, id=%s field=%s: "
+                            "keeping %r; discarded id=%s value %r",
+                            plate, keep_id, column, keep_value, duplicate["id"], duplicate_value,
+                        )
+            if absorbed:
+                assignments = ", ".join(f"{column} = :{column}" for column in absorbed)
+                conn.execute(
+                    text(f"UPDATE vehicle_identity SET {assignments} WHERE id = :keep_id"),
+                    {**absorbed, "keep_id": keep_id},
+                )
             placeholders = ", ".join(str(i) for i in dup_ids)  # ids only, not user input
             conn.execute(text(
                 f"UPDATE vehicle_event SET identity_id = :keep_id WHERE identity_id IN ({placeholders})"

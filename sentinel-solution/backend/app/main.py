@@ -33,6 +33,7 @@ from .api import (
 from .api.auth import ensure_default_admin_key
 from .api.rate_limit import RateLimitMiddleware
 from .catalogue import catalogue
+from . import external_camera_source
 from .db.models import CameraRegistry
 from .db.retention import purge_expired
 from .db.session import SessionLocal, init_db
@@ -162,6 +163,16 @@ def _sync_camera_health() -> None:
             registry.is_healthy = status["connected"] and not stale
             if status["last_frame_at"] is not None:
                 registry.last_seen_live_at = dt.datetime.utcfromtimestamp(status["last_frame_at"])
+            # A connected, non-stale stream can still be feeding a broken
+            # analytics pipeline (found 2026-09-13: torch/torchvision ABI
+            # mismatch failed every detection call while the stream stayed
+            # perfectly healthy) — surface that separately rather than
+            # letting stream connectivity alone say "ok".
+            registry.analytics_degraded = status["analytics_degraded"]
+            if status["last_analytics_success_at"] is not None:
+                registry.last_analytics_success_at = dt.datetime.utcfromtimestamp(
+                    status["last_analytics_success_at"]
+                )
         # Cameras that were live before but have no active worker anymore
         # (dropped from the catalogue) are unhealthy, not silently unknown.
         active_ids = set(snapshot.keys())
@@ -251,17 +262,48 @@ def on_startup():
             time.sleep(config.FEDERATION_INGEST_INTERVAL_S)
 
     threading.Thread(target=federation_ingest_loop, name="federation-ingest", daemon=True).start()
+
+    if config.EXTERNAL_CAMERA_SOURCE_ENABLED:
+        def external_camera_sync_loop():
+            # Model 2's "unified viewer connecting >=2 different systems" —
+            # syncs Caltrans D3's real public CCTV API into CameraRegistry
+            # on a slow poll. Registry-only: never touches catalogue.py, so
+            # StreamManager/the ANPR pipeline never attempts to open these
+            # as RTSP streams (see external_camera_source.py).
+            while True:
+                try:
+                    session = SessionLocal()
+                    try:
+                        n = external_camera_source.sync_into_registry(session)
+                        logger.info("external camera source sync: %d camera(s) from %s", n, external_camera_source.SOURCE_LABEL)
+                    finally:
+                        session.close()
+                except Exception:  # noqa: BLE001 — a sync failure must not kill the loop
+                    logger.exception("external camera source sync failed")
+                time.sleep(config.EXTERNAL_CAMERA_SOURCE_POLL_INTERVAL_S)
+
+        threading.Thread(target=external_camera_sync_loop, name="external-camera-sync", daemon=True).start()
+    else:
+        logger.info("external camera source sync disabled (SENTINEL_EXTERNAL_CAMERA_SOURCE_ENABLED=false)")
+
     logger.info("Sentinel backend started. CDN host=%s stream host=%s", config.CDN_HOST, config.STREAM_HOST)
 
 
 @app.get("/health")
 def health():
+    snapshot = stream_manager.health_snapshot()
+    degraded_count = sum(1 for s in snapshot.values() if s["analytics_degraded"])
     return {
-        "status": "ok",
+        # A worker count up with zero degraded is a real "ok"; a worker
+        # count up with some/all degraded means streams are connected but
+        # analytics is silently failing on them (found 2026-09-13) — do
+        # not collapse that distinction into a single "ok" boolean.
+        "status": "ok" if degraded_count == 0 else "degraded",
         # A count, not the camera-ID list — /health is unauthenticated by
         # design (basic liveness probe), so it shouldn't hand an anonymous
         # caller the actual camera inventory.
         "active_camera_worker_count": len(stream_manager.active_camera_ids),
+        "analytics_degraded_camera_count": degraded_count,
         "catalogue_size": len(catalogue.cameras),
         # Real class names, not booleans — anything starting with "Stub" is
         # the honest no-op fallback (see main.py's _build_* functions).

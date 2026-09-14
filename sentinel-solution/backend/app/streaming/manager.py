@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Dict
+import time
+from typing import Dict, Optional
 
 from .. import config
 from ..catalogue import CatalogueClient
@@ -19,6 +20,26 @@ logger = logging.getLogger("sentinel.stream-manager")
 
 FrameSink = "callable(Frame) -> None"
 
+# Real incident found 2026-09-13: a torch/torchvision ABI mismatch made
+# EVERY analytics call raise, while the RTSP read itself kept succeeding —
+# /health and CameraRegistry.is_healthy reported "ok" with 30 workers up
+# the entire time, because that signal only reflects stream connectivity
+# (see rtsp_client.py's connected/last_frame_at), not whether the
+# analytics pipeline is actually producing output. This many consecutive
+# analytics failures on one camera (each call is one stride-gated frame,
+# so this is a real span of wall-clock time, not one bad frame) flips
+# that camera to "analytics degraded" in health_snapshot() below.
+ANALYTICS_DEGRADED_ERROR_THRESHOLD = 5
+
+
+class _CameraAnalyticsHealth:
+    __slots__ = ("last_success_at", "last_error_at", "consecutive_errors")
+
+    def __init__(self) -> None:
+        self.last_success_at: Optional[float] = None
+        self.last_error_at: Optional[float] = None
+        self.consecutive_errors: int = 0
+
 
 class StreamManager:
     def __init__(self, catalogue: CatalogueClient, on_frame):
@@ -26,6 +47,7 @@ class StreamManager:
         self._on_frame_downstream = on_frame
         self._workers: Dict[str, RtspCameraWorker] = {}
         self._frame_counters: Dict[str, int] = {}
+        self._analytics_health: Dict[str, _CameraAnalyticsHealth] = {}
         self._lock = threading.RLock()
 
     def _handle_frame(self, frame: Frame) -> None:
@@ -34,7 +56,17 @@ class StreamManager:
             self._frame_counters[frame.camera_id] = n
         if n % config.ANALYTICS_FRAME_STRIDE != 0:
             return
-        self._on_frame_downstream(frame)
+
+        health = self._analytics_health.setdefault(frame.camera_id, _CameraAnalyticsHealth())
+        try:
+            self._on_frame_downstream(frame)
+        except Exception:
+            health.last_error_at = time.time()
+            health.consecutive_errors += 1
+            raise  # rtsp_client's worker loop logs it; re-raise, don't swallow here
+        else:
+            health.last_success_at = time.time()
+            health.consecutive_errors = 0
 
     def reconcile(self) -> None:
         """Call after every catalogue refresh."""
@@ -47,6 +79,7 @@ class StreamManager:
             to_stop = [(cam_id, self._workers.pop(cam_id)) for cam_id in current_ids - live_ids]
             for cam_id, _ in to_stop:
                 self._frame_counters.pop(cam_id, None)
+                self._analytics_health.pop(cam_id, None)
 
         # worker.start()/stop() happen OUTSIDE the lock: stop() joins the
         # worker's thread (up to 5s), which that same thread's frame
@@ -79,11 +112,26 @@ class StreamManager:
             return list(self._workers.keys())
 
     def health_snapshot(self) -> Dict[str, dict]:
-        """Per-camera connection health — feeds the Model 1 'health
-        monitoring' deliverable (see main.py's health-sync loop and
-        api/routes_cameras.py's gap-analysis endpoint)."""
+        """Per-camera connection AND analytics health — feeds the Model 1
+        'health monitoring' deliverable (see main.py's health-sync loop and
+        api/routes_cameras.py's gap-analysis endpoint). `connected`/
+        `last_frame_at` reflect the RTSP stream only; `analytics_degraded`
+        reflects whether the analytics pipeline itself is actually
+        succeeding on that stream's frames — the two can and did (found
+        2026-09-13) diverge."""
         with self._lock:
             return {
-                cam_id: {"connected": w.connected, "last_frame_at": w.last_frame_at}
+                cam_id: {
+                    "connected": w.connected,
+                    "last_frame_at": w.last_frame_at,
+                    "analytics_degraded": (
+                        self._analytics_health[cam_id].consecutive_errors >= ANALYTICS_DEGRADED_ERROR_THRESHOLD
+                        if cam_id in self._analytics_health
+                        else False
+                    ),
+                    "last_analytics_success_at": (
+                        self._analytics_health[cam_id].last_success_at if cam_id in self._analytics_health else None
+                    ),
+                }
                 for cam_id, w in self._workers.items()
             }

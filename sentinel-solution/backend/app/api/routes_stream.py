@@ -20,17 +20,40 @@ import re
 from urllib.parse import urljoin, urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy.orm import Session
 
 from ..catalogue import catalogue
-from .auth import Principal, require_role
+from ..db.models import CameraRegistry
+from .auth import Principal, department_scope, require_role
+from .deps import get_db
 
 logger = logging.getLogger("sentinel.stream")
 
 router = APIRouter(prefix="/live", tags=["live"])
 
 
+def _scoped_camera_or_404(camera_id: str, db: Session, principal: Principal) -> None:
+    """Apply the registry's non-enumerating department boundary to video.
+
+    A scoped principal gets the same response for an unknown camera and a
+    camera owned by another department.  Do this before consulting the live
+    catalogue, which otherwise leaks cross-department stream availability.
+    """
+    department = department_scope(principal)
+    if department is None:
+        return
+    camera = db.get(CameraRegistry, camera_id)
+    if camera is None or camera.department != department:
+        raise HTTPException(status_code=404, detail=f"camera {camera_id} not found")
+
+
 @router.get("/{camera_id}/index.m3u8")
-def hls_playlist(camera_id: str, _principal: Principal = Depends(require_role("viewer"))):
+def hls_playlist(
+    camera_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("viewer")),
+):
+    _scoped_camera_or_404(camera_id, db, principal)
     cam = catalogue.get(camera_id)
     if cam is None:
         raise HTTPException(404, "unknown camera id — check /cameras")
@@ -74,7 +97,12 @@ def hls_playlist(camera_id: str, _principal: Principal = Depends(require_role("v
 
 
 @router.get("/{camera_id}/seg")
-def hls_segment(camera_id: str, u: str, _principal: Principal = Depends(require_role("viewer"))):
+def hls_segment(
+    camera_id: str,
+    u: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("viewer")),
+):
     """Proxies one HLS segment (or nested sub-playlist) — `u` is the absolute
     upstream URL captured by hls_playlist() above, kept on our own /live
     path so the browser never needs the CDN session directly.
@@ -84,6 +112,7 @@ def hls_segment(camera_id: str, u: str, _principal: Principal = Depends(require_
     we fetch it with our authenticated session — otherwise this endpoint is
     an open SSRF proxy that fetches ANY url using the sandbox credentials.
     """
+    _scoped_camera_or_404(camera_id, db, principal)
     cam = catalogue.get(camera_id)
     if cam is None:
         raise HTTPException(404, "unknown camera id")

@@ -29,6 +29,20 @@ onnx==1.14.1
 onnxruntime==1.17.3
 protobuf==3.20.2
 
+# KNOWN LIVE CONFLICT (found 2026-09-13): on this dev environment (Python
+# 3.12), loading the plate-detector .onnx weights triggered ultralytics'
+# AutoUpdate anyway, silently upgrading the venv to onnx==1.22.0 /
+# protobuf==6.33.6. Attempting to re-pin back to onnx==1.14.1 failed outright
+# on Python 3.12 -- that release predates cp312 wheel support and falls back
+# to a source build requiring cmake (not installed here). paddleocr/
+# paddlepaddle are NOT installed in this venv, so the protobuf conflict
+# described above has not actually triggered yet. Before installing
+# paddleocr/paddlepaddle in THIS venv: either (a) recreate the venv on
+# Python <=3.11 so onnx==1.14.1's prebuilt wheel installs cleanly, or
+# (b) install cmake and build onnx==1.14.1 from source, or (c) find a newer
+# onnx/onnxruntime/protobuf combination that both has cp312 wheels and is
+# verified compatible with paddlepaddle==2.6.2 (not yet attempted).
+
 # WINDOWS DLL ORDERING GOTCHA (verified empirically, not theoretical):
 # importing paddleocr/paddlepaddle BEFORE torch in the same process corrupts
 # torch's native DLL loading (`OSError: ... torch\lib\shm.dll ...`). Both

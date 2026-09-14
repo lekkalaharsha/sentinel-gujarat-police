@@ -3,6 +3,7 @@ import { api } from "../api";
 import VehicleTimeline from "./VehicleTimeline";
 import ExplainabilityPanel from "./ExplainabilityPanel";
 import EvidenceViewer from "./EvidenceViewer";
+import SearchView from "./SearchView";
 import { IconVehicleSide } from "../icons";
 
 export default function VehicleIntelligence({ initialPlate, onResult, onOpenGraph }) {
@@ -117,6 +118,10 @@ export default function VehicleIntelligence({ initialPlate, onResult, onOpenGrap
           )}
         </div>
       </div>
+      <section className="vehicle-search__attribute-section">
+        <div className="card-h2"><div><h2>Can't read a plate?</h2><span className="sub">Search individual sightings by visible vehicle attributes.</span></div></div>
+        <SearchView embedded onOpenPlate={(matchedPlate) => { setPlate(matchedPlate); setResult(null); }} />
+      </section>
       {exportTarget && (
         <div className="card2" style={{ borderColor: "var(--confirmed)" }}>
           <div className="card-h2">

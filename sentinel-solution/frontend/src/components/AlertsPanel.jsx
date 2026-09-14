@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 
 const POLL_MS = 5000;
@@ -30,6 +30,8 @@ const ALERT_TYPE_LABEL = {
 export default function AlertsPanel() {
   const [alerts, setAlerts] = useState([]);
   const [error, setError] = useState(null);
+  const [pendingIds, setPendingIds] = useState([]);
+  const pendingTransitions = useRef(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -37,7 +39,12 @@ export default function AlertsPanel() {
       try {
         const data = await api.listAlerts();
         if (!cancelled) {
-          setAlerts(data);
+          // A poll started before a status mutation can return stale data.
+          // Preserve the local row while its own transition is unresolved.
+          setAlerts((previous) => data.map((incoming) => {
+            const local = previous.find((alert) => alert.id === incoming.id);
+            return pendingTransitions.current.has(incoming.id) && local ? local : incoming;
+          }));
           setError(null);
         }
       } catch (err) {
@@ -53,12 +60,27 @@ export default function AlertsPanel() {
   }, []);
 
   async function transition(id, status) {
+    if (pendingTransitions.current.has(id)) return;
+    pendingTransitions.current.add(id);
+    setPendingIds((previous) => [...previous, id]);
     try {
       const updated = await api.setAlertStatus(id, status);
       setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, ...updated } : a)));
       setError(null);
     } catch (err) {
-      setError(err.message);
+      if (String(err.message).startsWith("409")) {
+        setError("This alert was already updated. Refreshing the alert list…");
+        try {
+          setAlerts(await api.listAlerts());
+        } catch {
+          // Keep the useful transition message instead of a raw error.
+        }
+      } else {
+        setError(err.message);
+      }
+    } finally {
+      pendingTransitions.current.delete(id);
+      setPendingIds((previous) => previous.filter((pendingId) => pendingId !== id));
     }
   }
 
@@ -98,6 +120,7 @@ export default function AlertsPanel() {
                     <button
                       key={t}
                       onClick={() => transition(a.id, t)}
+                      disabled={pendingIds.includes(a.id)}
                       className={`alert-item__action alert-item__action--${t}`}
                     >
                       {TRANSITION_LABEL[t] || t}

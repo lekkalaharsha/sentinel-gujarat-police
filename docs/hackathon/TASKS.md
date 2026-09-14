@@ -1,12 +1,165 @@
 # Sentinel — Next Actions
 
 Living task list. Deadline **15 September 2026** (Phase 1, updated
-2026-09-05 — was 7 Sep), event 22–23 Sep (was 10–11 Sep).
-Last updated **2026-09-05** (reconciled against actual code — several
-entries below were stale/already fixed and have been corrected).
+2026-09-05 — was 7 Sep), event 22–23 Sep (was 10–11 Sep). **2 days left
+as of 2026-09-13.**
+Last updated **2026-09-13** (see new section below — reconciled against
+actual code and real sandbox verification; several entries below were
+stale/already fixed and have been corrected).
 Cross-check against `REQUIREMENTS_COVERAGE.md` (the authoritative
 deliverable-status matrix) and `sentinel-solution/README.md` ("Known
 issues") before trusting this file if it's more than a day or two old.
+
+## 2026-09-13 (continued) — Model 2 "≥2 different systems" closed (done)
+
+Per CLAUDE.md §10, faking or relabeling a single source was ruled out;
+building a token department-VMS integration "just to check the box" was
+already documented as theater (`model-2-unified-viewing/IMPLEMENTATION_PLAN.md`).
+Instead: found and integrated a real, independently-operated, public
+government system as System B — Caltrans District 3's public CCTV API
+(`https://cwwp2.dot.ca.gov/data/d3/cctv/cctvStatusD03.json`, no API key).
+`app/external_camera_source.py` (new module, ~130 lines) polls it and
+upserts into `CameraRegistry` with `source_system="caltrans_d3_public_api"`,
+registry-only so `StreamManager`/the ANPR pipeline never touches it as an
+RTSP source. Frontend: `SnapshotView.jsx` renders it inside the existing
+`CameraGridView` as a periodically-refreshed still image with an explicit
+"EXTERNAL SOURCE — periodic snapshot, not live video" badge — one unified
+viewer, two genuinely independent systems, each honestly labelled by real
+feed type, not two lookalike tiles. Live-verified against the real
+endpoint (found and fixed a real bug in the process: `fetch_raw`'s
+original 10s timeout failed against the real ~850KB/13s district
+payload — bumped to 30s). 4 new regression tests
+(`tests/test_external_camera_source.py`); full backend suite 159/159
+passing; frontend lint/build both clean. Off by default
+(`SENTINEL_EXTERNAL_CAMERA_SOURCE_ENABLED=false`) — set it to `true` when
+recording the demo. See `sentinel-solution/docs/models/model-2-unified-viewing/`
+for the full design note.
+
+**Still not started: the own-feed demo video (2-3 min, §9.3) — now the
+single highest-priority remaining item**, see the P0 section below.
+
+## 2026-09-13 — independent-review fixes + real live-sandbox verification (done)
+
+Fixed, tested, and committed (4 commits, `feature/statewide-operations-nav`):
+
+- **Evidence-tier alert bypass (BLOCKER, found by independent review)** —
+  `pipeline.py` was gating watchlist alerts on `identity.plate` instead of
+  the triggering event's OWN `plate`/`link_method`, so a LEAD_ONLY
+  appearance-match sighting could raise an ordinary plate-matched alert if
+  the same identity had been plate-confirmed by an earlier, different
+  sighting. Now gates on `evidence_class.classify(event.plate,
+  event.link_method) == CONFIRMED`; `Alert` persists `evidence_class`/
+  `evidence_class_reason`. Idempotent backfill script run against the live
+  `sentinel.db`; 2 pre-existing bad alerts correctly relabeled without
+  rewriting investigator history (evidence-append-only).
+- **Object-level RBAC gaps (found by independent review)** — camera
+  stream (HLS playlist/segment), last-detection, vehicle-crop, and alert
+  list/status/ack endpoints now enforce `department_scope()`: hard-block
+  for viewer role outside the owning department, audit-and-allow for
+  investigator role (preserves the intentional cross-department
+  vehicle-search capability, logged to `AuditLog`).
+- **Self-caught regression**: while verifying the RBAC fix, found the
+  vehicle-crop endpoint had briefly gated VIEWING (not just export) on
+  `evidence_class.is_exportable()` — would have 404'd 99.95% of real saved
+  crops (12,274/12,280 are non-CONFIRMED). Fixed; 5 regression tests lock
+  this in.
+- **RTSP reconnect not resetting tracker state** — `rtsp_client.py`
+  cleared `last_pts_ms` to `None` on reconnect, which silently made the
+  first frame of the new connection report `discontinuity=False`, so
+  `pipeline.py` never reset per-camera tracker/ByteTrack state across a
+  reconnect gap. Fixed with an explicit `just_reconnected` flag.
+- **ONVIF SSRF hardening** — `device.xaddr` (unauthenticated UDP
+  multicast reply) and `media_xaddr` (the device's own, equally untrusted
+  `GetCapabilities` response) were used directly in `requests.post()` with
+  redirects enabled — a hostile/compromised device could redirect the
+  backend to an internal URL. Added `_validate_onvif_address()` (rejects
+  non-http(s) schemes, unresolvable hosts, loopback/link-local/multicast
+  targets — covers cloud-metadata SSRF) and `allow_redirects=False`.
+- **Camera health masking analytics failures (live-reproduced this
+  session, see below)** — `CameraRegistry.is_healthy`/`/health` only ever
+  reflected RTSP stream connectivity. Added `analytics_degraded`/
+  `last_analytics_success_at` tracked at the point `pipeline.process()`
+  is actually invoked (stride-gated), separate from stream connectivity,
+  exposed on `GET /cameras` and `/health`.
+- **Real live-sandbox verification, using the real 30-camera sandbox and
+  real organizer credentials**: found and fixed a real torch/torchvision
+  ABI mismatch (`torch==2.12.1` + `torchvision==0.20.1`) that made every
+  analytics call fail while `/health` reported all 30 workers "ok" — the
+  exact failure mode the analytics-degraded fix above now catches.
+  Fixed via `pip install --upgrade torchvision` (resolved to
+  `torch==2.14.0`/`torchvision==0.29.0`); re-verified real, fresh
+  detection events land in `sentinel.db` against the live sandbox
+  (e.g. `cam11`, 2026-09-13, `car`, confidence 0.72). Plate is still
+  `None` — `paddleocr`/`paddlepaddle` are not installed in this
+  environment, `StubPlateReader` honestly active.
+- **New, documented, NOT-yet-fixed risk**: loading the plate-detector
+  `.onnx` weights still triggers ultralytics' AutoUpdate on this
+  environment, silently upgrading `onnx`/`protobuf` past the versions
+  `requirements-ml.txt` pins for exactly this reason (breaks
+  `paddlepaddle==2.6.2` if installed in the same venv). Attempting to
+  re-pin `onnx==1.14.1` failed outright on this environment's Python 3.12
+  (no prebuilt wheel, needs `cmake` to build from source) — left
+  documented in `requirements-ml.txt` rather than forced under deadline
+  pressure. **Before ever installing paddleocr/paddlepaddle in this same
+  venv**, recreate it on Python ≤3.11 or resolve this properly.
+- Rebuilt the presentation deck (`build_deck_v3.py`) around the corrected
+  accountability-layer positioning with real measured evidence-tier
+  counts, replacing the forbidden "ANPR failure ≠ tracking failure"
+  headline.
+
+156/156 backend tests passing after all fixes (was 131 at session start).
+
+**Still open, not touched this session:** the demo video, Model 2's
+two-system proof, PDF regeneration from the new deck, `HLD.md`/
+`REQUIREMENTS_COVERAGE.md` doc sync against these fixes, sandbox
+credential rotation (a real credential was pasted into a chat session
+this week and should be treated as exposed), camera ANPR-suitability
+scoring, §63 evidence hash-at-write, integration-loss dashboard.
+
+## 2026-09-13 (continued) — Model 4 pilot slice + second Codex batch, tagged v0.3.0 (done)
+
+Two further Codex batches, each reviewed and partly corrected before commit
+(see commit messages on `feature/statewide-operations-nav` for full detail):
+
+- **Model 4 pilot slice**: real sampled-frame density aggregation
+  (`CameraDensityWindow`, `GET /admin/density`), storage-tier metadata
+  (`VehicleEvent.storage_tier`, hot/warm/cold), a central pilot rollup
+  (`GET /admin/central-rollup`), and an explicit `DeliberatelyExcludedFaceRecognizer`
+  seam. Deliberately scoped — no Kafka/Kubernetes/Triton/TimescaleDB/S3/
+  government-DB integration. **Caught before commit**: Codex's own
+  handoff-report text had been accidentally pasted into the organizer-facing
+  `docs/promast/...Technical_Proposal.md` — reverted.
+- **RTSP read timeout** (`config.RTSP_READ_TIMEOUT_US`, default 5s) — a
+  stalled TCP peer could previously block `cap.read()` forever, defeating
+  the backoff/reconnect logic entirely.
+- **Atomic identity+event commits**: `identity.py` now flushes instead of
+  committing, so `pipeline.py`'s single commit covers both the identity
+  mutation and its `VehicleEvent` insert — previously a crash between them
+  could leave an orphaned identity mutation with no corresponding event.
+- **Camera ANPR-suitability scoring** (CAPABLE/MARGINAL/UNSUITABLE) from
+  real persisted plate-read history only — `analytics/anpr_suitability.py`,
+  surfaced on `GET /cameras`.
+- **Caught before commit**: the duplicate-identity migration's merge logic
+  absorbed missing fields with a generic rule that never actually fired for
+  `first_seen_at`/`last_seen_at` (always non-null via a `utcnow()` default)
+  — fixed to compute the genuinely correct MIN/MAX merge instead of keeping
+  the earliest-created row's possibly-stale timestamp.
+- **Track-contamination guard, SQLite write batching, 3 frontend gaps** —
+  see the updated P2 entries above for the contamination-guard limitation
+  and the FFmpeg-timeout/Safari-HLS/map-styling/alert-polling fixes. SQLite
+  now sets `PRAGMA busy_timeout=5000` + `journal_mode=WAL`, and density
+  writes batch per camera/window instead of committing every frame —
+  independently load-tested here (not just unit-tested): 30 concurrent
+  threads × 50 commits against a real temp SQLite file, 1500/1500 writes
+  succeeded, zero lock errors.
+
+**Tagged `v0.3.0`, PR #2 opened** (`feature/statewide-operations-nav` →
+`master`), not yet merged. 155/155 backend tests passing; frontend
+`npm run lint`/`npm run build` clean.
+
+**Still open:** everything listed as still-open above, unchanged — this was
+supporting hardening work, not a substitute for the demo video / two-system
+proof / credential rotation.
 
 ## Paused work — resume later
 
@@ -298,50 +451,50 @@ confirmed status + a concrete described fix for each).
 
 ## P2 — known code issues, not yet fixed (lower demo-visibility risk)
 
-- [ ] **`tracker.py`'s `consensus_plate()` can synthesize a plate string
-      that matches no actual OCR read, if a track's `plate_reads` ever mix
-      two different vehicles' reads (an IOU-overlap association merging a
-      second car into an existing track — e.g. one vehicle leaving a
-      queued spot right as another pulls into the same bbox within
-      `TRACK_TIMEOUT_MS`).** Found and investigated by an independent
-      project review (2026-09-11); locked in as a real, passing regression
-      test
-      (`test_consensus_plate_can_synthesize_a_string_that_matches_no_actual_read`),
-      not left silently unflagged. **Two fix attempts were tried and both
-      reverted, on evidence**: a post-hoc confidence penalty in
-      `consensus_plate()`, and a plate-agreement guard at association time
-      in `CameraTracker.update()` — both broke
-      `test_consensus_plate_isolates_higher_vote_share`/
-      `test_consensus_plate_confidence_is_vote_share_not_count`, which
-      correctly require a severely-disagreeing single stray misread of the
-      SAME vehicle to be outvoted, not treated as contamination; there is
-      no character-agreement threshold that separates that already-
-      required case from genuine two-vehicle contamination. A real fix
-      needs signal outside the plate string itself (e.g. an appearance-
-      embedding distance check between a candidate track's stored crop and
-      a new detection's crop before merging — a genuine `reid.py`-into-
-      `tracker.py` integration), not a small change — not attempted.
+- [x] **`tracker.py`'s `consensus_plate()` can synthesize a plate string
+      that matches no actual OCR read — PARTIALLY MITIGATED 2026-09-13, not
+      fully closed.** Found and investigated by an independent project
+      review (2026-09-11); two earlier fix attempts (a post-hoc confidence
+      penalty, a plate-agreement guard) were reverted on evidence — both
+      broke `test_consensus_plate_isolates_higher_vote_share`/
+      `test_consensus_plate_confidence_is_vote_share_not_count`. The
+      documented real fix (an appearance-embedding distance check between a
+      candidate track's stored crop and a new detection's crop before
+      merging, via `reid.py`) was implemented 2026-09-13:
+      `CameraTracker._appearance_compatible()` rejects an IOU-fallback merge
+      when `ColorHistogramEncoder` similarity is below 0.80 (identity.py's
+      existing threshold). **Known limitation, documented in code**: that
+      same encoder was independently measured
+      (`scripts/calibrate_embedding_threshold.py`, 2026-09-10) at a 41.87%
+      false-positive rate on real confirmed-different vehicle pairs, so this
+      guard reliably catches only grossly dissimilar vehicles (its own test
+      uses solid black vs. white crops) and will likely still miss the
+      realistic same-color-class contamination case. A real fix needs a
+      stronger encoder, not a threshold change on this one — not attempted.
       (`analytics/tracker.py`)
 
-- [ ] **RTSP discontinuity detection doesn't survive a reconnect** —
-      `last_pts_ms` resets to `None` on every reconnect, so a scene-loop
-      point that triggers a full reconnect (vs. a smooth PTS-backward
-      moment inside one connection) goes undetected and tracker/identity
-      state isn't reset. (`streaming/rtsp_client.py`)
-- [ ] **No FFmpeg read-timeout on `cap.read()`** — a stalled TCP session
-      can block forever instead of returning `ok=False`, defeating the
-      otherwise-correct backoff/reconnect logic. (`streaming/rtsp_client.py`)
-- [ ] **Frontend: Safari's native-HLS path sends no API key** and fails
-      with no visible error banner (only the hls.js path attaches auth
-      headers). (`frontend/src/components/LiveView.jsx`)
-- [ ] **Frontend: map view doesn't distinguish OBSERVED vs. INFERRED route
-      segments** — draws one uniform line regardless of link confidence,
-      unlike the Vehicle Tracking timeline panel which does this correctly.
-      (`frontend/src/components/MapView.jsx`, `App.jsx`)
-- [ ] **Frontend: alert-list polling can race a user's transition click** —
-      briefly reverts a just-acknowledged alert, second click then hits a
-      confusing raw `409 illegal transition` error.
-      (`frontend/src/components/AlertsPanel.jsx`)
+~~RTSP discontinuity detection doesn't survive a reconnect~~ — **fixed
+2026-09-13**, see the new section above. (`streaming/rtsp_client.py`)
+~~No FFmpeg read-timeout on `cap.read()`~~ — **fixed 2026-09-13**:
+`config.RTSP_READ_TIMEOUT_US` (default 5s) via `OPENCV_FFMPEG_CAPTURE_OPTIONS`'s
+`stimeout`. (`streaming/rtsp_client.py`)
+~~Frontend: Safari's native-HLS path sends no API key~~ — **fixed
+2026-09-13**: shows an explicit "requires Chrome/Firefox/Edge" message
+instead of a silently blank player (a real fix — signed-URL/cookie auth for
+Safari's native path — is out of scope, this makes the failure honest
+instead of silent). (`frontend/src/components/LiveView.jsx`)
+~~Frontend: map view doesn't distinguish OBSERVED vs. INFERRED route
+segments~~ — **fixed 2026-09-13**: route segments and stop markers now use
+the same evidence-tier styling as the Vehicle Tracking timeline panel
+(solid green/amber for CONFIRMED/PROBABLE, dashed red for LEAD_ONLY); a
+missing `evidence_class` fails conservative to LEAD_ONLY/INFERRED rather
+than defaulting to an "OBSERVED" label. (`frontend/src/components/MapView.jsx`)
+~~Frontend: alert-list polling can race a user's transition click~~ —
+**fixed 2026-09-13**: pending transitions are tracked locally and a
+concurrent poll response for that alert is ignored until the transition
+resolves; action buttons disable while pending; a 409 (already-transitioned)
+response shows a plain refresh message instead of raw backend error text.
+(`frontend/src/components/AlertsPanel.jsx`)
 
 ~~VehicleIdentity history lookup uses `.first()` on a non-unique query
 pattern~~ — **not actually a bug**, re-verified 2026-09-05: `vehicle_identity
@@ -526,10 +679,13 @@ build` clean, and every new endpoint exercised over real HTTP against a running
 | Real ANPR output | **PASS (historic)** — `data/anpr_scan/20260905T112430Z`, 7 reads |
 | GIS mapping | **PARTIAL** — 22 of 30 cameras have coordinates; the sandbox
   catalogue supplies none, they come from our registry |
-| RTSP analytics producing new events | **PARTIAL** — venv rebuilt to Python
-  3.11 (was 3.12, which had no `cp312` wheel for the pinned `onnx==1.14.1`
-  and would have needed a `cmake` source build). ML deps installing;
-  real-model verification proceeding on a second machine |
+| RTSP analytics producing new events | **PASS (updated 2026-09-13)** —
+  live-verified on this machine's Python 3.12 venv against the real
+  sandbox: a torch/torchvision ABI mismatch was found and fixed
+  (`pip install --upgrade torchvision`), real fresh detection events
+  now land in `sentinel.db` (e.g. `cam11`, confidence 0.72). Plate reads
+  still absent — `paddleocr`/`paddlepaddle` not installed here, honest
+  `StubPlateReader` fallback active. |
 | Full government-feed demo session | **RETRACTED "externally blocked"
   status — see below** |
 
@@ -564,6 +720,21 @@ Added a "Vehicle detections report" entry reusing the existing
 moment, which depends on the ML runtime (being verified on a second
 machine, see above) rather than on any organizer dependency.
 
+
+## 2026-09-13 — scoped Model 4 pilot slice
+
+- [x] **AUTOMATED-TEST VERIFIED:** `CameraDensityWindow` aggregates actual
+      sampled-frame vehicle/person detector outputs. `GET /admin/density`
+      labels them as raw detections, not unique people/vehicles or crowd size.
+- [x] **IMPLEMENTED, UNVERIFIED:** `VehicleEvent.storage_tier` and dynamic
+      hot/warm/cold classification expose metadata only; no object storage is deployed.
+- [x] **AUTOMATED-TEST VERIFIED:** `GET /admin/central-rollup` combines real
+      pilot registry, health, alert and federation data for admins.
+- [x] **IMPLEMENTED, UNVERIFIED:** `DR_RUNBOOK.md` defines a SQLite
+      backup/restore procedure. Multi-region DR remains a DESIGN TARGET.
+- [x] `DeliberatelyExcludedFaceRecognizer` is an honest Protocol seam that
+      raises rather than fabricating FRS results. FRS and government-database
+      integrations remain deliberately excluded/external-access dependent.
 
 ## Deliberately not doing (see STRATEGY.md's OUT list — don't silently build these)
 

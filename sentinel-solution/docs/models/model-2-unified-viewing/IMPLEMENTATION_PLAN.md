@@ -8,25 +8,33 @@ availability limit, not missing code. Everything below is Part
 2-equivalent: research-derived hardening, useful if time allows, not a
 submission blocker.
 
-## Not required, no action needed
+## Done
 
-- **"Unified viewer connecting ≥2 different systems."** **Qualified
-  2026-09-11** (an independent project review found this claim overstated
-  as originally written): "zero code change" is only true for a second
-  source that already exposes a `cameras.json`-shaped catalogue with
-  self-contained stream URLs, matching `CameraInfo.from_api`'s expected
-  shape (`catalogue.py`). A genuinely different real VMS/vendor system —
-  the case the hackathon spec actually means by "different systems" —
-  needs a new adapter, exactly like Model 3's `VMSAdapter` pattern. This
-  was proven directly: adding real ONVIF discovery as a second
-  ingestion path (`streaming/onvif_discovery.py`, 2026-09-11) required a
-  new ~250-line module, new config surface, and 14 new tests — not zero
-  code. The corrected claim: the *registry and viewer layer* is already
-  source-agnostic (Model 1's registry + Model 2's `StreamManager` don't
-  hardcode "the sandbox"), so onboarding a second source is a new-adapter-
-  sized change, not a rewrite — but it is not a zero-code-change event.
-  Don't simulate a fake second system to check this box — that would be
-  dishonest demoing, not a fix.
+- **"Unified viewer connecting ≥2 different systems" — built and
+  live-verified 2026-09-13.** **Qualified 2026-09-11** (an independent
+  project review found the original "zero code change" claim overstated):
+  a genuinely different real system needs a new adapter, exactly like
+  Model 3's `VMSAdapter` pattern — proven by ONVIF discovery needing a
+  new ~250-line module. That adapter-sized change is exactly what was
+  built for System B: `app/external_camera_source.py` (~130 lines) polls
+  Caltrans District 3's real, public, unauthenticated CCTV API and
+  upserts into `CameraRegistry` with `source_system="caltrans_d3_public_api"`,
+  registry-only (never touches `catalogue.py`, so `StreamManager`/the
+  ANPR pipeline can never mistake it for an RTSP-analyzable Gujarat
+  camera). Frontend: `SnapshotView.jsx` renders it as a periodically-
+  refreshed still image with an explicit "EXTERNAL SOURCE — periodic
+  snapshot, not live video" badge inside the same `CameraGridView` used
+  for live sandbox tiles — one unified viewer, two genuinely independent
+  systems, each honestly labelled by real feed type. 4 new regression
+  tests (`tests/test_external_camera_source.py`); live-verified against
+  the real endpoint (13s round trip for the full ~850KB district payload
+  — `fetch_raw`'s timeout was bumped from 10s to 30s after this was found
+  failing against real latency, not a fixture). Off by default
+  (`SENTINEL_EXTERNAL_CAMERA_SOURCE_ENABLED=false`) since it's a real
+  outbound network call — must not fire implicitly in tests or a plain
+  `python -m app.main` run; enable it for the demo recording. This was
+  not a fake/relabeled second source — see the "don't simulate a fake
+  second system" note this replaced.
 - **"Onboard ~50 heterogeneous cameras."** Same reasoning — Model 1's
   bulk/API onboarding handles arbitrary camera count already; 30 is the
   sandbox's real ceiling, not ours.
@@ -100,6 +108,7 @@ submission blocker.
 - **Kafka/Elasticsearch.** Per `STRATEGY.md`'s scope discipline — pilot
   scale doesn't need them; `SCALABILITY.md` already documents them as the
   district/state-tier step.
-- **A new department VMS integration just to prove "≥2 systems."** Would
-  be theater, not a real capability — see "Not required, no action
-  needed" above.
+- **A fake/simulated second system just to prove "≥2 systems."** Would be
+  theater, not a real capability — this is why System B (see "Done"
+  above) is a genuinely independent, real, live public government API
+  (Caltrans D3), not a relabeled copy of the same sandbox data.

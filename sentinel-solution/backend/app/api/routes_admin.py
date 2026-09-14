@@ -8,15 +8,59 @@ works, rather than taking it on faith.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .. import config
-from ..db.models import AuditLog
+from ..db.models import Alert, AuditLog, CameraDensityWindow, CameraRegistry, FederatedEvent
 from ..db.retention import purge_expired
 from .auth import Principal, require_role
 from .deps import get_db
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@router.get("/density")
+def density_windows(
+    camera_id: str | None = None,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+    _principal: Principal = Depends(require_role("admin")),
+):
+    """Pilot sampled-frame counts; not a crowd-size estimate or alert."""
+    query = db.query(CameraDensityWindow)
+    if camera_id:
+        query = query.filter(CameraDensityWindow.camera_id == camera_id)
+    rows = query.order_by(CameraDensityWindow.window_started_at.desc()).limit(min(max(limit, 1), 500)).all()
+    return {
+        "count_semantics": "sampled-frame detector outputs; not unique people or vehicles",
+        "windows": [{
+            "camera_id": row.camera_id,
+            "window_started_at": row.window_started_at.isoformat(),
+            "window_seconds": row.window_seconds,
+            "sampled_frames": row.sampled_frames,
+            "vehicle_detections": row.vehicle_detections,
+            "person_detections": row.person_detections,
+        } for row in rows],
+    }
+
+
+@router.get("/central-rollup")
+def central_rollup(
+    db: Session = Depends(get_db), _principal: Principal = Depends(require_role("admin")),
+):
+    """Read-only pilot rollup, explicitly not a statewide deployment."""
+    by_department = db.query(CameraRegistry.department, func.count(CameraRegistry.id)).group_by(CameraRegistry.department).all()
+    healthy = db.query(CameraRegistry).filter(CameraRegistry.is_healthy.is_(True)).count()
+    unhealthy = db.query(CameraRegistry).filter(CameraRegistry.is_healthy.is_(False)).count()
+    sources = [row[0] for row in db.query(FederatedEvent.source_system).distinct().order_by(FederatedEvent.source_system)]
+    return {
+        "scope": "pilot rollup from this database; not a statewide deployment",
+        "cameras_by_department": {department or "unassigned": count for department, count in by_department},
+        "health": {"healthy": healthy, "unhealthy": unhealthy, "unknown": db.query(CameraRegistry).filter(CameraRegistry.is_healthy.is_(None)).count()},
+        "active_alerts": db.query(Alert).filter(Alert.status.in_(("new", "acknowledged"))).count(),
+        "federation": {"event_count": db.query(FederatedEvent).count(), "sources_present": sources},
+    }
 
 
 @router.get("/retention-policy")

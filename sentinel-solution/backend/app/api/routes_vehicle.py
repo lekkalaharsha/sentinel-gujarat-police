@@ -21,10 +21,11 @@ from sqlalchemy.orm import Session
 from .. import config
 from ..analytics.anpr import normalize_plate
 from ..analytics import evidence_class as ec
+from ..analytics.density import storage_tier_for
 from ..analytics.geo import RoutePoint, build_inferred_segments, rank_candidate_cameras
 from ..db.models import AuditLog, CameraRegistry, VehicleEvent, VehicleIdentity
 from ..watchlist.service import watchlist_service
-from .auth import Principal, require_role
+from .auth import Principal, department_scope, require_role
 from .deps import get_db
 
 router = APIRouter(prefix="/vehicle", tags=["vehicle"])
@@ -56,8 +57,9 @@ def _cameras_by_id(db: Session, camera_ids) -> dict:
 @router.get("/recent")
 def recent_detections(
     limit: int = 20,
+    camera_id: str | None = None,
     db: Session = Depends(get_db),
-    _principal: Principal = Depends(require_role("investigator")),
+    principal: Principal = Depends(require_role("investigator")),
 ):
     """Live operational feed — the command-center 'what's happening right
     now' view, distinct from the purpose-bound individual lookups below
@@ -67,7 +69,15 @@ def recent_detections(
     a targeted investigation query — the distinction that keeps
     purpose-binding meaningful is per-plate lookup, not "is any recent-
     activity view allowed to exist at all"."""
-    events = db.query(VehicleEvent).order_by(VehicleEvent.observed_at.desc()).limit(limit).all()
+    query = db.query(VehicleEvent)
+    department = department_scope(principal)
+    if department is not None:
+        query = query.join(CameraRegistry, VehicleEvent.camera_id == CameraRegistry.id).filter(
+            CameraRegistry.department == department
+        )
+    if camera_id is not None:
+        query = query.filter(VehicleEvent.camera_id == camera_id)
+    events = query.order_by(VehicleEvent.observed_at.desc()).limit(limit).all()
     cameras = _cameras_by_id(db, (e.camera_id for e in events))
     out = []
     for e in events:
@@ -85,6 +95,7 @@ def recent_detections(
             "watchlisted": bool(e.plate and watchlist_service.check(e.plate)),
             "evidence_class": _cls(e),
             "exportable_as_evidence": ec.is_exportable(_cls(e)),
+            "storage_tier": storage_tier_for(e.observed_at),
         })
     return out
 
@@ -207,6 +218,7 @@ def vehicle_history(
                 "evidence_class": _cls(e),
                 "evidence_class_reason": ec.describe(_cls(e), e.link_method),
                 "exportable_as_evidence": ec.is_exportable(_cls(e)),
+                "storage_tier": storage_tier_for(e.observed_at),
                 # Evidence: real detection crop + bbox if the pipeline saved
                 # one (see analytics/pipeline.py); null on older rows or if
                 # the write failed. event_id lets the UI fetch the image.
@@ -249,16 +261,57 @@ def vehicle_history(
 @router.get("/event/{event_id}/crop")
 def vehicle_event_crop(
     event_id: int,
+    purpose: str = "unspecified",
+    case_id: str | None = None,
     db: Session = Depends(get_db),
-    _principal: Principal = Depends(require_role("viewer")),
+    principal: Principal = Depends(require_role("viewer")),
 ):
     """Serves the real evidence crop saved at detection time (see
     analytics/pipeline.py). 404 if this event has none — either it predates
     the crop feature, or the save failed; the UI should show a placeholder
-    rather than assume every sighting has an image."""
+    rather than assume every sighting has an image.
+
+    Viewing is NOT gated on evidence class: an investigator legitimately
+    needs to SEE a LEAD_ONLY sighting's photo to evaluate the lead (this is
+    the overwhelming majority of sightings — 12,274 of 12,280 saved crops in
+    the real database are non-CONFIRMED, so gating view on exportability
+    here would 404 nearly every evidence thumbnail in the app). Only a
+    genuine EXPORT/download action should be blocked for a non-exportable
+    class, and that block is enforced separately: the frontend disables its
+    export control using `exportable_as_evidence` from /vehicle/recent and
+    /vehicle/{plate}/history (see evidence_class.py), which is derived from
+    the same event row this endpoint serves, so a LEAD_ONLY crop can be
+    viewed here but the UI never offers to export it as evidence."""
     event = db.get(VehicleEvent, event_id)
     if event is None or not event.crop_path:
         raise HTTPException(status_code=404, detail="no evidence image for this event")
+
+    camera = db.get(CameraRegistry, event.camera_id)
+    department = department_scope(principal)
+    if principal.role == "viewer" and (
+        department is not None and (camera is None or camera.department != department)
+    ):
+        # A viewer must not be able to distinguish another department's crop
+        # from a missing event.
+        raise HTTPException(status_code=404, detail="no evidence image for this event")
+
+    if (
+        principal.role == "investigator"
+        and department is not None
+        and (camera is None or camera.department != department)
+    ):
+        db.add(AuditLog(
+            user_id=principal.user_id,
+            purpose=purpose,
+            case_id=case_id,
+            query=(
+                f"cross-department access: event {event.id} at camera {event.camera_id} "
+                f"(dept {camera.department if camera else 'unknown'}) by investigator "
+                f"in dept {department}"
+            ),
+        ))
+        db.commit()
+
     path = os.path.join(config.CROPS_DIR, event.crop_path)
     if not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="evidence image file missing on disk")
@@ -344,6 +397,7 @@ def search_by_attributes(
     out = []
     for e in events:
         cam = cameras.get(e.camera_id)
+        evidence_class = _cls(e)
         out.append(
             {
                 "camera_id": e.camera_id,
@@ -353,6 +407,8 @@ def search_by_attributes(
                 "plate_confidence": e.plate_confidence,
                 "vehicle_type": e.vehicle_type,
                 "color": e.color,
+                "evidence_class": evidence_class,
+                "evidence_class_reason": ec.describe(evidence_class, e.link_method),
             }
         )
     return {"query": query_desc, "matches": out, "total_count": total_count, "truncated": total_count > 200}

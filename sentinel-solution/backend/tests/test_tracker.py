@@ -13,6 +13,7 @@ Guards the two failure modes found only by manual testing:
 from __future__ import annotations
 
 import pytest
+import numpy as np
 
 from app.analytics.attributes import VehicleAttributes
 from app.analytics.tracker import CameraTracker, _iou
@@ -188,6 +189,18 @@ def test_consensus_plate_can_synthesize_a_string_that_matches_no_actual_read():
     assert plate == "XBC"
     assert plate not in {"ABC", "XBY", "AZC", "XYZ"}
     assert conf == pytest.approx(0.38, abs=0.01)
+
+
+def test_iou_overlap_with_visibly_different_crop_starts_a_new_track():
+    """The contamination fixture must be prevented before OCR votes mix."""
+    tracker = CameraTracker()
+    dark = np.zeros((40, 40, 3), dtype=np.uint8)
+    bright = np.full((40, 40, 3), 255, dtype=np.uint8)
+    first = tracker.update(B, 1000.0, "car", 0.9, ATTRS, ("ABC", 0.9), crop=dark)
+    second = tracker.update(B, 1100.0, "car", 0.9, ATTRS, ("XYZ", 0.9), crop=bright)
+    assert second.track_id != first.track_id
+    assert first.consensus_plate()[0] == "ABC"
+    assert second.consensus_plate()[0] == "XYZ"
 
 
 # --- ByteTrack id handoff ---------------------------------------------------

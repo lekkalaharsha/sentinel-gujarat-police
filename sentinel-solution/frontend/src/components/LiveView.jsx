@@ -38,7 +38,10 @@ export default function LiveView({ cameraId }) {
         if (data.fatal) setError(`stream error: ${data.details}`);
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = src; // Safari native HLS
+      // Native Safari HLS cannot send Sentinel's required custom API-key
+      // header. Do not assign src and leave an opaque blank player: a
+      // signed-URL/cookie auth design is required to support this path.
+      setError("Live view requires Chrome, Firefox, or Edge in this environment (Safari native HLS cannot send the required API key).");
     } else {
       setError("this browser cannot play HLS");
     }

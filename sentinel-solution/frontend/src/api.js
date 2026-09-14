@@ -60,6 +60,12 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(camera),
     }),
+  onboardCamerasBulk: (cameras) =>
+    request("/cameras/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cameras),
+    }),
   vehicleHistory: (plate, purpose, caseId, { signal } = {}) => {
     const params = new URLSearchParams({ purpose });
     if (caseId) params.set("case_id", caseId);
@@ -80,7 +86,11 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ plate, reason }),
     }),
-  listAlerts: (limit = 100) => request(`/alerts?limit=${limit}`),
+  listAlerts: (limit = 100, cameraId) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (cameraId) params.set("camera_id", cameraId);
+    return request(`/alerts?${params}`);
+  },
   ackAlert: (id) => request(`/alerts/${id}/ack`, { method: "POST" }),
   setAlertStatus: (id, status) =>
     request(`/alerts/${id}/status`, {
@@ -96,6 +106,7 @@ export const api = {
     return request(`/vehicle/${encodeURIComponent(plate)}/candidate-cameras?${params}`);
   },
   lastDetection: (cameraId) => request(`/cameras/${cameraId}/last-detection`),
+  cameraStats: (cameraId) => request(`/cameras/${encodeURIComponent(cameraId)}/stats`),
   eventCropUrl: (eventId) => `${API_BASE}/vehicle/event/${eventId}/crop`,
   // Auth'd image fetch — API key is a header, not a query param, so an
   // <img src> can't carry it. Fetch as a blob and hand back an object URL.
@@ -117,7 +128,11 @@ export const api = {
   auditLog: (limit = 200) => request(`/admin/audit-log?limit=${limit}`),
   retentionPolicy: () => request("/admin/retention-policy"),
   triggerPurge: () => request("/admin/purge", { method: "POST" }),
-  recentDetections: (limit = 20) => request(`/vehicle/recent?limit=${limit}`),
+  recentDetections: (limit = 20, cameraId) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (cameraId) params.set("camera_id", cameraId);
+    return request(`/vehicle/recent?${params}`);
+  },
 
   federationCorrelations: () => request("/federation/correlations"),
   downloadFederationReportPdf: async () => {

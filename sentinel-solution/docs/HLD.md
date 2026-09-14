@@ -360,6 +360,18 @@ been confirmed live reports health as `null` (unknown), not a false
 "healthy" default — an onboarded-but-never-connected camera must not look
 identical to a confirmed-working one.
 
+**Stream health is not analytics health, tracked separately since
+2026-09-13**: `is_healthy` above only reflects whether frames are
+arriving over RTSP. Live-reproduced this session: a torch/torchvision
+ABI mismatch made every analytics call raise while the stream itself
+stayed connected the whole time, so `is_healthy`/`/health` reported "ok"
+with all 30 workers up while detection was 100% broken. `StreamManager`
+now tracks `analytics_degraded` / `last_analytics_success_at` at the
+point `pipeline.process()` is actually invoked (stride-gated, so
+skipped frames aren't miscounted as trivial successes), surfaced
+separately on `GET /cameras` and `/health` rather than folded into the
+single `is_healthy` boolean.
+
 ## 5. AI video analytics approach
 
 ```
@@ -551,6 +563,16 @@ Windows, not yet on the likely-Linux production/demo box.
   surface in the system. A production deployment should weigh whether a
   narrower "cross-department escalation" role, or an additional audit
   flag on cross-department results, is warranted; not built here.
+- **Object-level department scoping closed on the remaining endpoints
+  (2026-09-13):** an independent review found the HLS stream (playlist/
+  segment), camera last-detection, vehicle-crop, and alert list/status/
+  ack endpoints were missing the object-level `department_scope()` check
+  that `GET /cameras` already had — a viewer-role key from one department
+  could reach another department's stream/crop/alert by ID even though
+  the list view correctly hid it. Fixed with the same pattern used
+  elsewhere: hard-block (404) for `viewer` outside the owning department,
+  audit-and-allow for `investigator` (logged to `AuditLog`), matching the
+  deliberate cross-department design for vehicle search described above.
 - **Purpose-bound, audited queries:** every vehicle-history/search query
   logs the *authenticated* user (from the API key, not a self-reported
   string), stated purpose, and optional case ID to `AuditLog` — this

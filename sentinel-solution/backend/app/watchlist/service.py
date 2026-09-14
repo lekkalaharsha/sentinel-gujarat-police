@@ -47,7 +47,13 @@ class WatchlistService:
             return self._plates.get(normalize_plate(plate))
 
     def raise_alert_if_matched(
-        self, session: Session, plate: str, camera_id: str, vehicle_event_id: int
+        self,
+        session: Session,
+        plate: str,
+        camera_id: str,
+        vehicle_event_id: int,
+        evidence_class: Optional[str] = None,
+        evidence_class_reason: Optional[str] = None,
     ) -> Optional[Alert]:
         reason = self.check(plate)
         if reason is None:
@@ -72,6 +78,8 @@ class WatchlistService:
             camera_id=camera_id,
             reason=reason,
             vehicle_event_id=vehicle_event_id,
+            evidence_class=evidence_class,
+            evidence_class_reason=evidence_class_reason,
         )
         session.add(alert)
         session.commit()

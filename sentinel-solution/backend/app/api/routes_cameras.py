@@ -14,6 +14,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 from sqlalchemy.orm import Session
 
 from .. import config
+from ..analytics.anpr_suitability import anpr_suitability_by_camera
 from ..catalogue import catalogue
 from ..db.models import CameraAuditLog, CameraRegistry, VehicleEvent
 from .auth import Principal, department_scope, require_role
@@ -51,7 +52,9 @@ def _registered_cameras(db: Session, principal: Principal | None = None) -> list
 HEALTH_STALE_S = 90.0
 
 
-def _merged_camera_view(cam_id: str, registry, live_info, include_raw_urls: bool = False) -> dict:
+def _merged_camera_view(
+    cam_id: str, registry, live_info, include_raw_urls: bool = False, anpr_suitability: dict | None = None,
+) -> dict:
     """Model 1's registry is metadata-first (see HACKATHON_DETAILS.md §7):
     a camera can be "registered" (in CameraRegistry, with department/GIS
     metadata) independently of whether it's currently live in the
@@ -88,12 +91,33 @@ def _merged_camera_view(cam_id: str, registry, live_info, include_raw_urls: bool
         "latitude": registry.latitude if registry else None,
         "longitude": registry.longitude if registry else None,
         "is_healthy": registry.is_healthy if registry else None,
+        # Distinct from is_healthy on purpose: is_healthy is stream
+        # connectivity only. A camera can be "connected, not stale" while
+        # its analytics calls are all failing (found 2026-09-13) — that
+        # must be visible here, not folded into is_healthy's single bool
+        # (CLAUDE.md 24.11: a polished UI must not conceal degraded
+        # backend state).
+        "analytics_degraded": registry.analytics_degraded if registry else None,
+        "last_analytics_success_at": (
+            registry.last_analytics_success_at.isoformat()
+            if registry and registry.last_analytics_success_at
+            else None
+        ),
         "last_seen_live_at": registry.last_seen_live_at.isoformat() if registry and registry.last_seen_live_at else None,
         "is_restricted_zone": registry.is_restricted_zone if registry else False,
         "expected_direction_deg": registry.expected_direction_deg if registry else None,
         "install_date": registry.install_date.isoformat() if registry and registry.install_date else None,
         "coverage_radius_m": registry.coverage_radius_m if registry else None,
         "onboarded": registry is not None,
+        "anpr_suitability": anpr_suitability,
+        # Model 2's "unified viewer connecting >=2 different systems": null
+        # source_system = a real Gujarat sandbox camera; a non-null value
+        # marks a row onboarded from a genuinely independent external
+        # system (see external_camera_source.py). snapshot_image_url is
+        # only ever set for such rows and must be rendered as a
+        # periodically-refreshed still image, never as live HLS video.
+        "source_system": registry.source_system if registry else None,
+        "snapshot_image_url": registry.snapshot_image_url if registry else None,
     }
 
 
@@ -132,8 +156,11 @@ def list_cameras(
     dept = department_scope(principal)
     all_ids = set(registry_by_id.keys()) if dept is not None else (set(live_cams.keys()) | set(registry_by_id.keys()))
     include_raw_urls = principal.role == "admin"
+    suitability = anpr_suitability_by_camera(db, list(all_ids))
     rows = [
-        _merged_camera_view(cam_id, registry_by_id.get(cam_id), live_cams.get(cam_id), include_raw_urls)
+        _merged_camera_view(
+            cam_id, registry_by_id.get(cam_id), live_cams.get(cam_id), include_raw_urls, suitability.get(cam_id)
+        )
         for cam_id in sorted(all_ids)
     ]
     if department is not None:
@@ -439,16 +466,29 @@ def get_camera(camera_id: str, db: Session = Depends(get_db), principal: Princip
         raise HTTPException(status_code=404, detail=f"camera {camera_id} not found")
     if live_info is None and registry is None:
         raise HTTPException(status_code=404, detail=f"camera {camera_id} not found")
-    return _merged_camera_view(camera_id, registry, live_info, include_raw_urls=principal.role == "admin")
+    return _merged_camera_view(
+        camera_id, registry, live_info, include_raw_urls=principal.role == "admin",
+        anpr_suitability=anpr_suitability_by_camera(db, [camera_id]).get(camera_id),
+    )
 
 
 @router.get("/{camera_id}/last-detection")
-def last_detection(camera_id: str, db: Session = Depends(get_db), _principal: Principal = Depends(require_role("viewer"))):
+def last_detection(
+    camera_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("viewer")),
+):
     """Most recent real detection at this camera. Not a live video overlay —
     the pipeline processes sampled frames server-side, it doesn't composite
     boxes back onto the HLS stream — but it IS the real bbox/plate/attributes
     from the latest processed frame, meant to be polled and shown alongside
     the live player as a periodically-refreshed "last seen" panel."""
+    registry = db.get(CameraRegistry, camera_id)
+    dept = department_scope(principal)
+    if dept is not None and (registry is None or registry.department != dept):
+        # Keep the same non-enumerating response as get_camera().
+        raise HTTPException(status_code=404, detail=f"camera {camera_id} not found")
+
     event = (
         db.query(VehicleEvent)
         .filter(VehicleEvent.camera_id == camera_id)
@@ -473,4 +513,46 @@ def last_detection(camera_id: str, db: Session = Depends(get_db), _principal: Pr
                 if event.bbox_x1 is not None else None
             ),
         },
+    }
+
+
+@router.get("/{camera_id}/stats")
+def camera_stats(
+    camera_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("viewer")),
+):
+    """Bounded recent-sighting summary for the camera detail panel.
+
+    The count covers at most the latest 1,000 events observed in the last
+    24 hours.  The explicit cap keeps an info-panel open from becoming an
+    unbounded scan on a high-volume camera; ``truncated`` tells the client
+    when it is a lower bound rather than a complete 24-hour count.
+    """
+    registry = db.get(CameraRegistry, camera_id)
+    dept = department_scope(principal)
+    if dept is not None and (registry is None or registry.department != dept):
+        raise HTTPException(status_code=404, detail=f"camera {camera_id} not found")
+    if registry is None and catalogue.get(camera_id) is None:
+        raise HTTPException(status_code=404, detail=f"camera {camera_id} not found")
+
+    window_started_at = dt.datetime.utcnow() - dt.timedelta(hours=24)
+    events = (
+        db.query(VehicleEvent)
+        .filter(VehicleEvent.camera_id == camera_id, VehicleEvent.observed_at >= window_started_at)
+        .order_by(VehicleEvent.observed_at.desc())
+        .limit(1000)
+        .all()
+    )
+    breakdown = {"CONFIRMED": 0, "PROBABLE": 0, "LEAD_ONLY": 0}
+    from ..analytics import evidence_class as ec
+    for event in events:
+        breakdown[ec.classify(event.plate, event.link_method)] += 1
+    return {
+        "camera_id": camera_id,
+        "window_hours": 24,
+        "window_started_at": window_started_at.isoformat(),
+        "sighting_count": len(events),
+        "by_evidence_class": breakdown,
+        "truncated": len(events) == 1000,
     }

@@ -19,22 +19,80 @@ from app.db.models import (
     VehicleEvent,
     VehicleIdentity,
 )
+from app.analytics import evidence_class as evclass
 from app.watchlist.service import WatchlistService
 
 
-def _seed_event(session):
+def _seed_event(session, *, identity_plate=None, event_plate=None, link_method=None):
     camera = session.get(CameraRegistry, "cam01")
     if camera is None:
         camera = CameraRegistry(id="cam01")
         session.add(camera)
         session.commit()
-    identity = VehicleIdentity(plate=None)
+    identity = VehicleIdentity(plate=identity_plate)
     session.add(identity)
     session.commit()
-    event = VehicleEvent(identity_id=identity.id, camera_id=camera.id, pts_ms=0.0)
+    event = VehicleEvent(
+        identity_id=identity.id,
+        camera_id=camera.id,
+        pts_ms=0.0,
+        plate=event_plate,
+        link_method=link_method,
+    )
     session.add(event)
     session.commit()
     return event
+
+
+def _raise_like_pipeline(session, service, event, camera_id="cam01"):
+    """Mirrors the exact gating pipeline.py performs before calling
+    raise_alert_if_matched — kept in sync deliberately so a regression in
+    the real gate (e.g. reverting to `identity.plate`) fails this test."""
+    sighting_class = evclass.classify(event.plate, event.link_method)
+    if sighting_class != evclass.CONFIRMED:
+        return None
+    return service.raise_alert_if_matched(
+        session,
+        event.plate,
+        camera_id,
+        event.id,
+        evidence_class=sighting_class,
+        evidence_class_reason=evclass.describe(sighting_class, event.link_method),
+    )
+
+
+def test_lead_only_appearance_match_never_raises_alert_even_if_identity_has_plate(session):
+    """The real bug found in the live database: identity.plate was set by
+    an earlier CONFIRMED sighting on another camera. A later LEAD_ONLY
+    appearance-match sighting on a DIFFERENT camera (this event's own
+    plate is None) must never raise a plate-matched watchlist alert."""
+    service = WatchlistService()
+    service.add(session, "GJ01AB1234", "stolen")
+
+    event = _seed_event(
+        session,
+        identity_plate="GJ01AB1234",  # set by a prior, different sighting
+        event_plate=None,             # THIS sighting never read a plate
+        link_method="appearance_match",
+    )
+
+    alert = _raise_like_pipeline(session, service, event)
+
+    assert alert is None
+    assert session.query(Alert).count() == 0
+
+
+def test_confirmed_sighting_raises_alert_with_evidence_class_persisted(session):
+    service = WatchlistService()
+    service.add(session, "GJ01AB1234", "stolen")
+
+    event = _seed_event(session, identity_plate="GJ01AB1234", event_plate="GJ01AB1234", link_method=None)
+
+    alert = _raise_like_pipeline(session, service, event)
+
+    assert alert is not None
+    assert alert.evidence_class == evclass.CONFIRMED
+    assert alert.evidence_class_reason
 
 
 def test_add_upserts_reason_instead_of_raising_on_duplicate_plate(session):

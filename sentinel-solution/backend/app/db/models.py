@@ -84,6 +84,14 @@ class CameraRegistry(Base):
     # health status we have no evidence for. Only main.py's health-sync loop
     # (backed by the real RTSP worker's connection state) ever sets this.
     is_healthy = Column(Boolean, nullable=True, default=None)
+    # Separate from is_healthy on purpose (found 2026-09-13): is_healthy
+    # only reflects RTSP stream connectivity. A real torch/torchvision ABI
+    # mismatch made the analytics pipeline fail on every frame while the
+    # stream itself stayed connected the whole time, so is_healthy alone
+    # can mask a camera that is receiving frames but producing zero
+    # detections. See streaming/manager.py's ANALYTICS_DEGRADED_ERROR_THRESHOLD.
+    analytics_degraded = Column(Boolean, nullable=True, default=None)
+    last_analytics_success_at = Column(DateTime, nullable=True)
 
     # Named-anomaly-alert config (see analytics/anomaly.py). Both opt-in,
     # per-camera, set at onboarding time — a camera with neither set never
@@ -108,6 +116,22 @@ class CameraRegistry(Base):
     # nullable: an un-set radius means "unknown," not "zero coverage" — the
     # map renders no circle for it rather than a misleading dot-sized one.
     coverage_radius_m = Column(Float, nullable=True)
+
+    # Model 2's "unified viewer connecting >=2 different systems" —
+    # NULL means this row is a real Gujarat sandbox camera; a non-null
+    # value (e.g. "caltrans_d3_public_api") marks it as onboarded from a
+    # genuinely independent external system (see external_camera_source.py).
+    # StreamManager/the ANPR pipeline only ever reads from catalogue.py's
+    # CatalogueClient, never from this column, so an external row can never
+    # be mistaken for a live RTSP-analyzable Gujarat camera.
+    source_system = Column(String, nullable=True)
+    # Direct image URL for an external, snapshot-only (not continuous
+    # video) source. The frontend must render this as a periodically-
+    # refreshed still image with an explicit "external / snapshot" label,
+    # never inside the same live-HLS <video> tile used for sandbox cameras
+    # (CLAUDE.md 24.11 — a polished UI must not conceal a truthful
+    # distinction in feed type).
+    snapshot_image_url = Column(String, nullable=True)
 
 
 class VehicleEvent(Base):
@@ -135,6 +159,10 @@ class VehicleEvent(Base):
     # immediately after resolution) but the column already exists for when
     # they don't. Matches FederatedEvent's observed_at/ingested_at split.
     ingested_at = Column(DateTime, default=dt.datetime.utcnow)
+    # Pilot metadata only. The API recomputes the current tier from age so a
+    # row cannot remain "hot" forever; this stored initial value preserves
+    # what was assigned when the event entered Sentinel.
+    storage_tier = Column(String, nullable=True, default="hot")
     confidence = Column(Float, nullable=True)  # detector confidence
 
     vehicle_type = Column(String, nullable=True)  # car / truck / bus / motorcycle
@@ -184,6 +212,26 @@ class VehicleEvent(Base):
 
     camera = relationship("CameraRegistry")
     identity = relationship("VehicleIdentity")
+
+
+class CameraDensityWindow(Base):
+    """Real sampled-frame object counts for one camera/time bucket.
+
+    Counts are detector outputs, not unique people/vehicles or a crowd-size
+    estimate.  That distinction is deliberate: no crowd-density threshold or
+    biometric identification is inferred by this pilot capability.
+    """
+
+    __tablename__ = "camera_density_window"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    camera_id = Column(String, ForeignKey("camera_registry.id"), nullable=False, index=True)
+    window_started_at = Column(DateTime, nullable=False, index=True)
+    window_seconds = Column(Integer, nullable=False)
+    sampled_frames = Column(Integer, nullable=False, default=0)
+    vehicle_detections = Column(Integer, nullable=False, default=0)
+    person_detections = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, default=dt.datetime.utcnow, nullable=False)
 
 
 class WatchlistEntry(Base):
@@ -334,5 +382,12 @@ class Alert(Base):
     # for the action, mirroring AuditLog's purpose-bound logging ethos.
     status_updated_by = Column(String, nullable=True)
     status_updated_at = Column(DateTime, nullable=True)
+    # Evidence class of the VehicleEvent that triggered this alert, snapshotted
+    # at raise time (see analytics/evidence_class.py). Nullable: legacy alerts
+    # predate this column and anomaly alerts don't carry a plate read at all.
+    # Persisted rather than re-derived on read so the UI never has to trust a
+    # client-side recomputation of a safety-relevant label.
+    evidence_class = Column(String, nullable=True)
+    evidence_class_reason = Column(String, nullable=True)
 
     camera = relationship("CameraRegistry")

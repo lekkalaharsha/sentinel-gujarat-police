@@ -4,15 +4,13 @@ import Sidebar from "./components/Sidebar";
 import Topbar from "./components/Topbar";
 import CommandCenter from "./components/CommandCenter";
 import LiveMapView from "./components/LiveMapView";
+import LiveNetworkView from "./components/LiveNetworkView";
 import GeoTemporalGraph from "./components/GeoTemporalGraph";
 import VehicleIntelligence from "./components/VehicleIntelligence";
 import CameraNetworkView from "./components/CameraNetworkView";
-import CameraGridView from "./components/CameraGridView";
-import LiveCameraView from "./components/LiveCameraView";
 import AlertsView from "./components/AlertsView";
 import WatchlistView from "./components/WatchlistView";
 import FederationDashboard from "./components/FederationDashboard";
-import SearchView from "./components/SearchView";
 import InvestigationsView from "./components/InvestigationsView";
 import EvidenceView from "./components/EvidenceView";
 import ReportsView from "./components/ReportsView";
@@ -25,6 +23,12 @@ import ConnectedSystemsView from "./components/ConnectedSystemsView";
 import MonitoringView from "./components/MonitoringView";
 import UserAdminView from "./components/UserAdminView";
 import NotImplemented from "./components/NotImplemented";
+import StatewideOverview from "./components/StatewideOverview";
+import CentralMonitoringView from "./components/CentralMonitoringView";
+import InfrastructureScaleView from "./components/InfrastructureScaleView";
+import StorageRetentionView from "./components/StorageRetentionView";
+import ResilienceDRView from "./components/ResilienceDRView";
+import StatewideReadinessView from "./components/StatewideReadinessView";
 import "./App.css";
 
 const CAMERA_POLL_MS = 15000;
@@ -54,7 +58,7 @@ export default function App() {
     try {
       setGapAnalysis(await api.gapAnalysis());
     } catch {
-      // same tolerance as cameras — real endpoint, real transient failures
+      // same tolerance as cameras â€” real endpoint, real transient failures
     }
   }, []);
 
@@ -92,7 +96,6 @@ export default function App() {
   }, [refreshAlerts]);
 
   const activeAlertCount = alerts.filter((a) => (a.status || "new") !== "resolved" && (a.status || "new") !== "dismissed").length;
-  const selectedCamera = cameras.find((c) => c.id === selectedCameraId) || null;
 
   function openGraph(plate) {
     setPendingPlate(plate);
@@ -104,7 +107,7 @@ export default function App() {
   }
   function openCamera(id) {
     setSelectedCameraId(id);
-    setView("camera");
+    setView("livemap");
   }
 
   return (
@@ -122,7 +125,7 @@ export default function App() {
           }}
         />
         {/* Conditional mounting, not always-mounted+CSS-hidden: caught by
-            actually running this and watching the network tab — with every
+            actually running this and watching the network tab â€” with every
             view mounted at once, all 8+ screens' on-mount data-fetches fired
             simultaneously on page load, before the API key was ever set,
             producing a burst of guaranteed 401s and continuous background
@@ -133,26 +136,23 @@ export default function App() {
           <div className="view2 active">
             {view === "command" && <CommandCenter cameras={cameras} health={health} gapAnalysis={gapAnalysis} alerts={alerts} route={vehicleResult?.sightings} onOpenAlert={() => setView("alerts")} />}
             {view === "livemap" && <LiveMapView cameras={cameras} route={vehicleResult?.sightings} selectedCameraId={selectedCameraId} onSelectCamera={openCamera} />}
+            {view === "livenetwork" && <LiveNetworkView cameras={cameras} />}
             {view === "graph" && <GeoTemporalGraph cameras={cameras} initialPlate={pendingPlate} />}
-            {view === "vehicle" && <VehicleIntelligence initialPlate={pendingPlate} onResult={setVehicleResult} onOpenGraph={openGraph} />}
+            {view === "vehicle" && <VehicleIntelligence key={`vehicle-${pendingPlate}`} initialPlate={pendingPlate} onResult={setVehicleResult} onOpenGraph={openGraph} />}
             {view === "network" && (
               <CameraNetworkView
                 cameras={cameras}
                 gapAnalysis={gapAnalysis}
                 selectedCameraId={selectedCameraId}
                 onSelectCamera={setSelectedCameraId}
-                onOpenCamera={openCamera}
                 gapRefreshToken={gapRefreshToken}
                 onOnboarded={() => setGapRefreshToken((n) => n + 1)}
               />
             )}
-            {view === "camera" && <LiveCameraView camera={selectedCamera} />}
-            {view === "grid" && <CameraGridView cameras={cameras} />}
             {view === "monitoring" && <MonitoringView />}
             {view === "alerts" && <AlertsView />}
             {view === "watchlist" && <WatchlistView />}
             {view === "federation" && <FederationDashboard onOpenPlate={openVehicle} />}
-            {view === "search" && <SearchView onOpenPlate={openVehicle} />}
             {view === "audit" && <InvestigationsView />}
             {view === "evidence" && <EvidenceView />}
             {view === "reports" && <ReportsView />}
@@ -163,11 +163,17 @@ export default function App() {
             {view === "runtime" && <SystemHealthView health={health} gapAnalysis={gapAnalysis} />}
             {view === "architecture" && <ArchitectureView />}
             {view === "settings" && <SettingsView />}
+            {view === "statewide" && <StatewideOverview cameras={cameras} health={health} alerts={alerts} onNavigate={setView} />}
+            {view === "statewide-central" && <CentralMonitoringView cameras={cameras} health={health} />}
+            {view === "statewide-infra" && <InfrastructureScaleView />}
+            {view === "statewide-storage" && <StorageRetentionView />}
+            {view === "statewide-dr" && <ResilienceDRView />}
+            {view === "statewide-readiness" && <StatewideReadinessView />}
             {view === "cases" && (
               <NotImplemented
                 title="Investigation Cases"
                 sub="Group sightings, alerts and evidence under a named case"
-                what="Sentinel already requires a case ID and a stated purpose on every vehicle lookup, and records both in the audit trail — but there is no case entity yet, so cases cannot be listed, reopened, or used to group evidence. Building the screen without that backend would mean inventing case records, which this project does not do."
+                what="Sentinel already requires a case ID and a stated purpose on every vehicle lookup, and records both in the audit trail â€” but there is no case entity yet, so cases cannot be listed, reopened, or used to group evidence. Building the screen without that backend would mean inventing case records, which this project does not do."
                 requires={[
                   "A Case model plus an additive migration (id, title, owner, status, created_at)",
                   "Linking the existing audit-log purpose/case_id entries to it",
@@ -180,8 +186,8 @@ export default function App() {
             {view === "anpr" && (
               <NotImplemented
                 title="ANPR Readiness"
-                sub="Whether a camera is physically capable of reading a plate — separate from whether it is online"
-                what="This is the highest-value missing screen. Our own cam01 produced 0 plate reads from 62 correctly-localised plates because the plate patch is roughly 25x16 px, against a requirement of at least 120x20 px that four independent vendors agree on. That is a provable geometric finding about the camera, not a failure of the OCR — but the backend does not yet measure or persist plate pixel dimensions, so there is nothing truthful to display."
+                sub="Whether a camera is physically capable of reading a plate â€” separate from whether it is online"
+                what="This is the highest-value missing screen. Our own cam01 produced 0 plate reads from 62 correctly-localised plates because the plate patch is roughly 25x16 px, against a requirement of at least 120x20 px that four independent vendors agree on. That is a provable geometric finding about the camera, not a failure of the OCR â€” but the backend does not yet measure or persist plate pixel dimensions, so there is nothing truthful to display."
                 requires={[
                   "Persist plate bounding-box width/height per localisation attempt",
                   "Per-camera OCR yield: localisations attempted vs pattern-valid reads",

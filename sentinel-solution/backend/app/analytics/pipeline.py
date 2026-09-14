@@ -38,9 +38,11 @@ from ..db.session import SessionLocal
 from ..streaming.rtsp_client import Frame
 from ..watchlist.service import watchlist_service
 from .anomaly import raise_anomaly_alerts
+from . import evidence_class as evclass
 from .anpr import PlateReader
 from .attributes import MakeModelClassifier, StubMakeModelClassifier, extract_attributes
 from .detector import VehicleDetector
+from .density import DensityBatcher, PendingDensity, record_batched_counts
 from .identity import identity_resolver
 from .plate_detector import PlateDetector, StubPlateDetector, crop_plate, enhance_plate_crop
 from .reid import EMBEDDING_DIM, ColorHistogramEncoder, ReIdEncoder
@@ -74,6 +76,7 @@ class AnalyticsPipeline:
         self._reid_encoder = reid_encoder
         self._clock = clock
         self._trackers: Dict[str, CameraTracker] = {}
+        self._density_batcher = DensityBatcher()
 
     def process(self, frame: Frame) -> None:
         tracker = self._trackers.setdefault(frame.camera_id, CameraTracker())
@@ -89,6 +92,7 @@ class AnalyticsPipeline:
             # within-camera tracker gets.
             logger.info("camera %s: scene discontinuity at pts=%.0fms", frame.camera_id, frame.pts_ms)
             self._finalize_tracks(frame.camera_id, tracker.flush_all())
+            self.flush_density(frame.camera_id)
             self._detectors.pop(frame.camera_id, None)
 
         # NOT `self._detectors.setdefault(id, self._detector_factory())` —
@@ -101,6 +105,11 @@ class AnalyticsPipeline:
             self._detectors[frame.camera_id] = self._detector_factory()
         detector = self._detectors[frame.camera_id]
         detections = detector.detect(frame.image)
+        # Aggregate sampled-frame detections in memory.  One SQLite write is
+        # made when this camera enters the next configured time window.
+        completed_density = self._density_batcher.add(frame.camera_id, self._clock(), detections)
+        if completed_density is not None:
+            self._persist_density(completed_density)
         vehicle_detections = [d for d in detections if d.label != "person"]
 
         for det in vehicle_detections:
@@ -124,6 +133,24 @@ class AnalyticsPipeline:
             )
 
         self._finalize_tracks(frame.camera_id, tracker.pop_expired(frame.pts_ms))
+
+    def _persist_density(self, batch: PendingDensity) -> None:
+        density_session = SessionLocal()
+        try:
+            self._ensure_camera_registered(density_session, batch.camera_id)
+            record_batched_counts(density_session, batch)
+            density_session.commit()
+        except Exception:
+            density_session.rollback()
+            logger.exception("camera %s: density aggregation failed", batch.camera_id)
+        finally:
+            density_session.close()
+
+    def flush_density(self, camera_id: str) -> None:
+        """Flush a camera's partial window on a discontinuity/shutdown."""
+        pending_density = self._density_batcher.flush_camera(camera_id)
+        if pending_density is not None:
+            self._persist_density(pending_density)
 
     def _read_plate(self, vehicle_crop):
         """vehicle crop -> locate plate region -> enhance -> OCR. Running
@@ -232,8 +259,24 @@ class AnalyticsPipeline:
                 event.crop_path = self._save_crop(event.id, track.best_crop)
                 session.commit()
 
-                if identity.plate:
-                    watchlist_service.raise_alert_if_matched(session, identity.plate, camera_id, event.id)
+                # Gate on THIS event's own evidence class, not identity.plate:
+                # identity.plate can be set from a DIFFERENT, earlier camera's
+                # read, so checking it here would raise a plate-matched alert
+                # off a sighting that never read a plate itself (a LEAD_ONLY
+                # appearance link riding on another sighting's confirmed
+                # plate). Only a sighting that read and validated its own
+                # plate (CONFIRMED) may trigger a watchlist alert — see
+                # evidence_class.py and DECISION_REVIEW_2026-09-11.md.
+                sighting_class = evclass.classify(event.plate, event.link_method)
+                if sighting_class == evclass.CONFIRMED:
+                    watchlist_service.raise_alert_if_matched(
+                        session,
+                        event.plate,
+                        camera_id,
+                        event.id,
+                        evidence_class=sighting_class,
+                        evidence_class_reason=evclass.describe(sighting_class, event.link_method),
+                    )
 
                 camera_row = session.get(CameraRegistry, camera_id)
                 raise_anomaly_alerts(session, camera_row, event, identity)
